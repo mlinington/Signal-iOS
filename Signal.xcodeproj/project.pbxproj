@@ -1094,8 +1094,6 @@
 		E75DD3E02810CDBD00E32C36 /* SubscriptionManagerTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75DD3DF2810CDBD00E32C36 /* SubscriptionManagerTest.swift */; };
 		E7D0A2CF28D01F370072F642 /* NSItemProvider+OWS.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7D0A2CE28D01F370072F642 /* NSItemProvider+OWS.swift */; };
 		E7D0A2D028D0232E0072F642 /* NSItemProvider+Promises.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34ED55A023D0D59700446E39 /* NSItemProvider+Promises.swift */; };
-		E7D0A2D128D0232E0072F642 /* NSItemProvider+TypedAccessors.m in Sources */ = {isa = PBXBuildFile; fileRef = 4CCB567C23C8D89C004A5731 /* NSItemProvider+TypedAccessors.m */; };
-		E7D0A2D328D026060072F642 /* NSItemProvider+TypedAccessors.h in Headers */ = {isa = PBXBuildFile; fileRef = 4CCB567B23C8D89C004A5731 /* NSItemProvider+TypedAccessors.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		E7D7C93F28B580AC003F043B /* Bundle+OWS.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7D7C93E28B580AC003F043B /* Bundle+OWS.swift */; };
 		F0038600273F6388000B5ABD /* DonationUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00385FD273F6388000B5ABD /* DonationUtilities.swift */; };
 		F0038601273F6388000B5ABD /* Stripe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00385FE273F6388000B5ABD /* Stripe.swift */; };
@@ -2952,8 +2950,6 @@
 		4CBBFE492306F5D300B37450 /* LogViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogViewController.swift; sourceTree = "<group>"; };
 		4CC1ECF8211A47CD00CC13BE /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		4CC1ECFA211A553000CC13BE /* AppUpdateNag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateNag.swift; sourceTree = "<group>"; };
-		4CCB567B23C8D89C004A5731 /* NSItemProvider+TypedAccessors.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSItemProvider+TypedAccessors.h"; sourceTree = "<group>"; };
-		4CCB567C23C8D89C004A5731 /* NSItemProvider+TypedAccessors.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSItemProvider+TypedAccessors.m"; sourceTree = "<group>"; };
 		4CD675BD22E7BE35008010D2 /* MediaDismissAnimationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaDismissAnimationController.swift; sourceTree = "<group>"; };
 		4CD675C422E7CF22008010D2 /* ConversationViewController+OWS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationViewController+OWS.swift"; sourceTree = "<group>"; };
 		4CD675C622E7D393008010D2 /* MediaPresentationContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPresentationContext.swift; sourceTree = "<group>"; };
@@ -5750,8 +5746,6 @@
 				34D913491F62D4A500722898 /* SignalAttachment.swift */,
 				E7D0A2CE28D01F370072F642 /* NSItemProvider+OWS.swift */,
 				34ED55A023D0D59700446E39 /* NSItemProvider+Promises.swift */,
-				4CCB567B23C8D89C004A5731 /* NSItemProvider+TypedAccessors.h */,
-				4CCB567C23C8D89C004A5731 /* NSItemProvider+TypedAccessors.m */,
 			);
 			path = attachments;
 			sourceTree = "<group>";
@@ -8245,7 +8239,6 @@
 				3478506A1FD9B78A007B8332 /* AppSetup.h in Headers */,
 				3464451222B7F97100A957B1 /* DateUtil.h in Headers */,
 				34480B551FD0A7A400BC14EF /* DebugLogger.h in Headers */,
-				E7D0A2D328D026060072F642 /* NSItemProvider+TypedAccessors.h in Headers */,
 				3461295A1FD1D74C00532771 /* Environment.h in Headers */,
 				346129A51FD1F09100532771 /* OWSContactsManager.h in Headers */,
 				3464450E22B7F93600A957B1 /* OWSOrphanDataCleaner.h in Headers */,
@@ -9819,7 +9812,6 @@
 				3464451122B7F97100A957B1 /* DateUtil.m in Sources */,
 				3452851B26DE890400824983 /* DateUtil.swift in Sources */,
 				34480B561FD0A7A400BC14EF /* DebugLogger.m in Sources */,
-				E7D0A2D128D0232E0072F642 /* NSItemProvider+TypedAccessors.m in Sources */,
 				3498AC87251387E500B1F315 /* Dependencies+SignalMessaging.swift in Sources */,
 				450998651FD8A34D00D89EB3 /* DeviceSleepManager.swift in Sources */,
 				F0038600273F6388000B5ABD /* DonationUtilities.swift in Sources */,

@@ -198,7 +198,7 @@ public enum OWSItemProvider {
 
         switch unloadedItem.itemType {
         case .movie:
-            return itemProvider.loadUrl(forTypeIdentifier: kUTTypeMovie as String, options: nil).map { fileUrl in
+            return itemProvider.loadObject(URL.self, forTypeIdentifier: kUTTypeMovie as String, options: nil).map { fileUrl in
                 LoadedItem(itemProvider: unloadedItem.itemProvider,
                            payload: .fileUrl(fileUrl))
 
@@ -221,7 +221,7 @@ public enum OWSItemProvider {
                 desiredTypeIdentifier = kUTTypeImage as String
             }
 
-            return itemProvider.loadUrl(forTypeIdentifier: desiredTypeIdentifier, options: nil).map { fileUrl in
+            return itemProvider.loadObject(URL.self, forTypeIdentifier: desiredTypeIdentifier, options: nil).map { fileUrl in
                 LoadedItem(itemProvider: unloadedItem.itemProvider,
                            payload: .fileUrl(fileUrl))
             }.recover(on: .global()) { error -> Promise<LoadedItem> in
@@ -231,43 +231,43 @@ public enum OWSItemProvider {
 
                 // If a URL wasn't available, fall back to an in-memory image.
                 // One place this happens is when sharing from the screenshot app on iOS13.
-                return itemProvider.loadImage(forTypeIdentifier: kUTTypeImage as String, options: nil).map { image in
+                return itemProvider.loadObject(UIImage.self, forTypeIdentifier: kUTTypeImage as String, options: nil).map { image in
                     LoadedItem(itemProvider: unloadedItem.itemProvider,
                                payload: .inMemoryImage(image))
                 }
             }
         case .webUrl:
-            return itemProvider.loadUrl(forTypeIdentifier: kUTTypeURL as String, options: nil).map { url in
+            return itemProvider.loadObject(URL.self, forTypeIdentifier: kUTTypeURL as String, options: nil).map { url in
                 LoadedItem(itemProvider: unloadedItem.itemProvider,
                            payload: .webUrl(url))
             }
         case .fileUrl:
-            return itemProvider.loadUrl(forTypeIdentifier: kUTTypeFileURL as String, options: nil).map { fileUrl in
+            return itemProvider.loadObject(URL.self, forTypeIdentifier: kUTTypeFileURL as String, options: nil).map { fileUrl in
                 LoadedItem(itemProvider: unloadedItem.itemProvider,
                            payload: .fileUrl(fileUrl))
             }
         case .contact:
-            return itemProvider.loadData(forTypeIdentifier: kUTTypeContact as String, options: nil).map { contactData in
+            return itemProvider.loadObject(Data.self, forTypeIdentifier: kUTTypeContact as String, options: nil).map { contactData in
                 LoadedItem(itemProvider: unloadedItem.itemProvider,
                            payload: .contact(contactData))
             }
         case .text:
-            return itemProvider.loadText(forTypeIdentifier: kUTTypeText as String, options: nil).map { text in
+            return itemProvider.loadObject(String.self, forTypeIdentifier: kUTTypeText as String, options: nil).map { text in
                 LoadedItem(itemProvider: unloadedItem.itemProvider,
                            payload: .text(text))
             }
         case .pdf:
-            return itemProvider.loadData(forTypeIdentifier: kUTTypePDF as String, options: nil).map { data in
+            return itemProvider.loadObject(Data.self, forTypeIdentifier: kUTTypePDF as String, options: nil).map { data in
                 LoadedItem(itemProvider: unloadedItem.itemProvider,
                            payload: .pdf(data))
             }
         case .pkPass:
-            return itemProvider.loadData(forTypeIdentifier: "com.apple.pkpass", options: nil).map { data in
+            return itemProvider.loadObject(Data.self, forTypeIdentifier: "com.apple.pkpass", options: nil).map { data in
                 LoadedItem(itemProvider: unloadedItem.itemProvider,
                            payload: .pkPass(data))
             }
         case .other:
-            return itemProvider.loadUrl(forTypeIdentifier: kUTTypeFileURL as String, options: nil).map { fileUrl in
+            return itemProvider.loadObject(URL.self, forTypeIdentifier: kUTTypeFileURL as String, options: nil).map { fileUrl in
                 LoadedItem(itemProvider: unloadedItem.itemProvider,
                            payload: .fileUrl(fileUrl))
             }
