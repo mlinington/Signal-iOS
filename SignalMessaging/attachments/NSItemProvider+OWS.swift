@@ -5,225 +5,66 @@
 import SignalServiceKit
 import CoreServices
 
-public enum OWSItemProvider {
-    public struct UnloadedItem {
-        enum ItemType {
-            case movie
-            case image
-            case webUrl
-            case fileUrl
-            case contact
-            case text
-            case pdf
-            case pkPass
-            case other
-        }
+// Apple doesn't export this from CoreServices, but this is the UTI PassKit uses for PassKit passes.
+private let kOWSTypePassKitPass = "com.apple.pkpass"
+private let kOWSTypeHeic = "public.heic"
 
-        let itemProvider: NSItemProvider
-        let itemType: ItemType
+public extension NSItemProvider {
+    enum ItemType {
+        case movie
+        case image
+        case webUrl
+        case fileUrl
+        case contact
+        case text
+        case pdf
+        case pkPass
     }
 
-    private struct LoadedItem {
-        enum LoadedItemPayload {
-            case fileUrl(_ fileUrl: URL)
-            case inMemoryImage(_ image: UIImage)
-            case webUrl(_ webUrl: URL)
-            case contact(_ contactData: Data)
-            case text(_ text: String)
-            case pdf(_ data: Data)
-            case pkPass(_ data: Data)
-
-            var debugDescription: String {
-                switch self {
-                case .fileUrl:
-                    return "fileUrl"
-                case .inMemoryImage:
-                    return "inMemoryImage"
-                case .webUrl:
-                    return "webUrl"
-                case .contact:
-                    return "contact"
-                case .text:
-                    return "text"
-                case .pdf:
-                    return "pdf"
-                case .pkPass:
-                    return "pkPass"
-                }
-            }
+    var availableItemTypes: Set<ItemType> {
+        var result = Set<ItemType>()
+        if hasItemConformingToTypeIdentifier(kUTTypeMovie as String) {
+            result.insert(.movie)
         }
-
-        let itemProvider: NSItemProvider
-        let payload: LoadedItemPayload
-
-        var customFileName: String? {
-            isContactShare ? "Contact.vcf" : nil
+        if hasItemConformingToTypeIdentifier(kUTTypeImage as String) {
+            result.insert(.image)
         }
-
-        private var isContactShare: Bool {
-            if case .contact = payload {
-                return true
-            } else {
-                return false
-            }
+        if hasItemConformingToTypeIdentifier(kUTTypeURL as String) {
+            result.insert(.webUrl)
         }
-
-        var debugDescription: String {
-            payload.debugDescription
+        if hasItemConformingToTypeIdentifier(kUTTypeFileURL as String) {
+            result.insert(.fileUrl)
         }
-
-        fileprivate func asAttachmentPayload() throws -> NSItemProvider.AttachmentPayload {
-            switch payload {
-            case .fileUrl(let fileUrl):
-                do {
-                    if OWSItemProvider.isVideoNeedingRelocation(itemProvider: itemProvider, itemUrl: fileUrl) {
-                        return .fileUrl(try SignalAttachment.copyToVideoTempDir(url: fileUrl))
-                    } else {
-                        return .fileUrl(fileUrl)
-                    }
-                } catch {
-                    throw OWSAssertionError("Could not copy video")
-                }
-            case .inMemoryImage(let image): return .inMemoryImage(image)
-            case .webUrl(let webUrl): return .webUrl(webUrl)
-            case .contact(let contactData): return .contact(contactData)
-            case .text(let text): return .text(text)
-            case .pdf(let data): return .pdf(data)
-            case .pkPass(let data): return .pkPass(data)
-            }
+        if hasItemConformingToTypeIdentifier(kUTTypeVCard as String) {
+            result.insert(.contact)
         }
+        if hasItemConformingToTypeIdentifier(kUTTypeText as String) {
+            result.insert(.text)
+        }
+        if hasItemConformingToTypeIdentifier(kUTTypePDF as String) {
+            result.insert(.pdf)
+        }
+        if hasItemConformingToTypeIdentifier(kOWSTypePassKitPass as String) {
+            result.insert(.pkPass)
+        }
+        return result
     }
 
+    func attachmentPayload(for type: ItemType) -> Promise<AttachmentPayload> {
+        guard availableItemTypes.contains(type) else { return Promise(error: OWSAssertionError("")) }
 
-    public static func itemsToLoad(inputItems: [NSExtensionItem]) throws -> [UnloadedItem] {
-        for inputItem in inputItems {
-            guard let itemProviders = inputItem.attachments else {
-                throw OWSAssertionError("attachments was empty")
-            }
-
-            let itemsToLoad: [UnloadedItem] = itemProviders.map { itemProvider in
-                if itemProvider.hasItemConformingToTypeIdentifier(kUTTypeMovie as String) {
-                    return UnloadedItem(itemProvider: itemProvider, itemType: .movie)
-                }
-
-                if itemProvider.hasItemConformingToTypeIdentifier(kUTTypeImage as String) {
-                    return UnloadedItem(itemProvider: itemProvider, itemType: .image)
-                }
-
-                // A single inputItem can have multiple attachments, e.g. sharing from Firefox gives
-                // one url attachment and another text attachment, where the url would be https://some-news.com/articles/123-cat-stuck-in-tree
-                // and the text attachment would be something like "Breaking news - cat stuck in tree"
-                //
-                // FIXME: For now, we prefer the URL provider and discard the text provider, since it's more useful to share the URL than the caption
-                // but we *should* include both. This will be a bigger change though since our share extension is currently heavily predicated
-                // on one itemProvider per share.
-                if isUrlItem(itemProvider: itemProvider) {
-                    return UnloadedItem(itemProvider: itemProvider, itemType: .webUrl)
-                }
-
-                if itemProvider.hasItemConformingToTypeIdentifier(kUTTypeFileURL as String) {
-                    return UnloadedItem(itemProvider: itemProvider, itemType: .fileUrl)
-                }
-
-                if itemProvider.hasItemConformingToTypeIdentifier(kUTTypeVCard as String) {
-                    return UnloadedItem(itemProvider: itemProvider, itemType: .contact)
-                }
-
-                if itemProvider.hasItemConformingToTypeIdentifier(kUTTypeText as String) {
-                    return UnloadedItem(itemProvider: itemProvider, itemType: .text)
-                }
-
-                if itemProvider.hasItemConformingToTypeIdentifier(kUTTypePDF as String) {
-                    return UnloadedItem(itemProvider: itemProvider, itemType: .pdf)
-                }
-
-                if itemProvider.hasItemConformingToTypeIdentifier("com.apple.pkpass") {
-                    return UnloadedItem(itemProvider: itemProvider, itemType: .pkPass)
-                }
-
-                owsFailDebug("unexpected share item: \(itemProvider)")
-                return UnloadedItem(itemProvider: itemProvider, itemType: .other)
-            }
-
-            // Prefer a URL if available. If there's an image item and a URL item,
-            // the URL is generally more useful. e.g. when sharing an app from the
-            // App Store the image would be the app icon and the URL is the link
-            // to the application.
-            if let urlItem = itemsToLoad.first(where: { $0.itemType == .webUrl }) {
-                return [urlItem]
-            }
-
-            let visualMediaItems = itemsToLoad.filter { isVisualMediaItem(itemProvider: $0.itemProvider) }
-
-            // We only allow sharing 1 item, unless they are visual media items. And if they are
-            // visualMediaItems we share *only* the visual media items - a mix of visual and non
-            // visual items is not supported.
-            if visualMediaItems.count > 0 {
-                return visualMediaItems
-            } else if itemsToLoad.count > 0 {
-                return Array(itemsToLoad.prefix(1))
-            }
-        }
-        throw OWSAssertionError("no input item")
-    }
-
-    public static func loadItems(unloadedItems: [UnloadedItem]) -> Promise<[NSItemProvider.AttachmentPayload]> {
-        let loadPromises: [Promise<NSItemProvider.AttachmentPayload>] = unloadedItems.map { unloadedItem in
-            loadItem(unloadedItem: unloadedItem).map { try $0.asAttachmentPayload() }
-        }
-
-        return Promise.when(fulfilled: loadPromises)
-    }
-
-    public static func buildAttachments(loadedItems: [NSItemProvider.AttachmentPayload]) -> Promise<[SignalAttachment]> {
-        var attachmentPromises = [Promise<SignalAttachment>]()
-        for loadedItem in loadedItems {
-            attachmentPromises.append(firstly(on: .sharedUserInitiated) { () -> Promise<SignalAttachment> in
-                loadedItem.loadAsSignalAttachment().0
-            })
-        }
-        return Promise.when(fulfilled: attachmentPromises)
-    }
-
-    private static func itemMatchesSpecificUtiType(itemProvider: NSItemProvider, utiType: String) -> Bool {
-        // URLs, contacts and other special items have to be detected separately.
-        // Many shares (e.g. pdfs) will register many UTI types and/or conform to kUTTypeData.
-        guard itemProvider.registeredTypeIdentifiers.count == 1 else {
-            return false
-        }
-        guard let firstUtiType = itemProvider.registeredTypeIdentifiers.first else {
-            return false
-        }
-        return firstUtiType == utiType
-    }
-
-    private static func isVisualMediaItem(itemProvider: NSItemProvider) -> Bool {
-        return (itemProvider.hasItemConformingToTypeIdentifier(kUTTypeImage as String) ||
-            itemProvider.hasItemConformingToTypeIdentifier(kUTTypeMovie as String))
-    }
-
-    private static func isUrlItem(itemProvider: NSItemProvider) -> Bool {
-        return itemMatchesSpecificUtiType(itemProvider: itemProvider,
-                                          utiType: kUTTypeURL as String)
-    }
-
-    private static func isContactItem(itemProvider: NSItemProvider) -> Bool {
-        return itemMatchesSpecificUtiType(itemProvider: itemProvider,
-                                          utiType: kUTTypeContact as String)
-    }
-
-    private static func loadItem(unloadedItem: UnloadedItem) -> Promise<LoadedItem> {
-        Logger.info("unloadedItem: \(unloadedItem)")
-
-        let itemProvider = unloadedItem.itemProvider
-
-        switch unloadedItem.itemType {
+        switch type {
         case .movie:
-            return itemProvider.loadObject(URL.self, forTypeIdentifier: kUTTypeMovie as String, options: nil).map { fileUrl in
-                LoadedItem(itemProvider: unloadedItem.itemProvider,
-                           payload: .fileUrl(fileUrl))
-
+            return firstly {
+                loadObject(URL.self, forTypeIdentifier: kUTTypeMovie as String, options: nil)
+            }.map { itemUrl in
+                if OWSItemProvider.isVideoNeedingRelocation(itemProvider: self, itemUrl: itemUrl) {
+                    return .fileUrl(try SignalAttachment.copyToVideoTempDir(url: itemUrl))
+                } else {
+                    return .fileUrl(itemUrl)
+                }
             }
+
         case .image:
             // When multiple image formats are available, kUTTypeImage will
             // defer to jpeg when possible. On iPhone 12 Pro, when 'heic'
@@ -236,63 +77,51 @@ public enum OWSItemProvider {
             // format directly, which behaves correctly for all our needs.
             // A radar has been opened with apple reporting this issue.
             let desiredTypeIdentifier: String
-            if #available(iOS 14, *), itemProvider.registeredTypeIdentifiers.contains("public.heic") {
-                desiredTypeIdentifier = "public.heic"
+            if #available(iOS 14, *), registeredTypeIdentifiers.contains(kOWSTypeHeic) {
+                desiredTypeIdentifier = kOWSTypeHeic
             } else {
                 desiredTypeIdentifier = kUTTypeImage as String
             }
 
-            return itemProvider.loadObject(URL.self, forTypeIdentifier: desiredTypeIdentifier, options: nil).map { fileUrl in
-                LoadedItem(itemProvider: unloadedItem.itemProvider,
-                           payload: .fileUrl(fileUrl))
-            }.recover(on: .global()) { error -> Promise<LoadedItem> in
+            return firstly {
+                loadObject(URL.self, forTypeIdentifier: desiredTypeIdentifier, options: nil).map { .fileUrl($0) }
+            }.recover(on: .global()) { error -> Promise<AttachmentPayload> in
                 let nsError = error as NSError
-                assert(nsError.domain == NSItemProvider.errorDomain)
-                assert(nsError.code == NSItemProvider.ErrorCode.unexpectedValueClassError.rawValue)
+                let isTypeMismatchError = nsError.hasDomain(
+                    NSItemProvider.errorDomain,
+                    code: NSItemProvider.ErrorCode.unexpectedValueClassError.rawValue)
 
-                // If a URL wasn't available, fall back to an in-memory image.
-                // One place this happens is when sharing from the screenshot app on iOS13.
-                return itemProvider.loadObject(UIImage.self, forTypeIdentifier: kUTTypeImage as String, options: nil).map { image in
-                    LoadedItem(itemProvider: unloadedItem.itemProvider,
-                               payload: .inMemoryImage(image))
+                if isTypeMismatchError {
+                    return self.loadObject(UIImage.self, forTypeIdentifier: kUTTypeImage as String, options: nil).map { .inMemoryImage($0) }
+                } else {
+                    throw error
                 }
             }
         case .webUrl:
-            return itemProvider.loadObject(URL.self, forTypeIdentifier: kUTTypeURL as String, options: nil).map { url in
-                LoadedItem(itemProvider: unloadedItem.itemProvider,
-                           payload: .webUrl(url))
-            }
+            return loadObject(URL.self, forTypeIdentifier: kUTTypeURL as String, options: nil).map { .webUrl($0) }
         case .fileUrl:
-            return itemProvider.loadObject(URL.self, forTypeIdentifier: kUTTypeFileURL as String, options: nil).map { fileUrl in
-                LoadedItem(itemProvider: unloadedItem.itemProvider,
-                           payload: .fileUrl(fileUrl))
-            }
+            return loadObject(URL.self, forTypeIdentifier: kUTTypeFileURL as String, options: nil).map { .fileUrl($0) }
         case .contact:
-            return itemProvider.loadObject(Data.self, forTypeIdentifier: kUTTypeContact as String, options: nil).map { contactData in
-                LoadedItem(itemProvider: unloadedItem.itemProvider,
-                           payload: .contact(contactData))
-            }
+            return loadObject(Data.self, forTypeIdentifier: kUTTypeContact as String, options: nil).map { .contact($0) }
         case .text:
-            return itemProvider.loadObject(String.self, forTypeIdentifier: kUTTypeText as String, options: nil).map { text in
-                LoadedItem(itemProvider: unloadedItem.itemProvider,
-                           payload: .text(text))
-            }
+            return loadObject(String.self, forTypeIdentifier: kUTTypeText as String, options: nil).map { .text($0) }
         case .pdf:
-            return itemProvider.loadObject(Data.self, forTypeIdentifier: kUTTypePDF as String, options: nil).map { data in
-                LoadedItem(itemProvider: unloadedItem.itemProvider,
-                           payload: .pdf(data))
-            }
+            return loadObject(Data.self, forTypeIdentifier: kUTTypePDF as String, options: nil).map { .pdf($0) }
         case .pkPass:
-            return itemProvider.loadObject(Data.self, forTypeIdentifier: "com.apple.pkpass", options: nil).map { data in
-                LoadedItem(itemProvider: unloadedItem.itemProvider,
-                           payload: .pkPass(data))
-            }
-        case .other:
-            return itemProvider.loadObject(URL.self, forTypeIdentifier: kUTTypeFileURL as String, options: nil).map { fileUrl in
-                LoadedItem(itemProvider: unloadedItem.itemProvider,
-                           payload: .fileUrl(fileUrl))
-            }
+            return loadObject(Data.self, forTypeIdentifier: kOWSTypePassKitPass, options: nil).map { .pkPass($0) }
         }
+    }
+}
+
+public enum OWSItemProvider {
+    public static func buildAttachments(loadedItems: [NSItemProvider.AttachmentPayload]) -> Promise<[SignalAttachment]> {
+        var attachmentPromises = [Promise<SignalAttachment>]()
+        for loadedItem in loadedItems {
+            attachmentPromises.append(firstly(on: .sharedUserInitiated) { () -> Promise<SignalAttachment> in
+                loadedItem.loadAsSignalAttachment().0
+            })
+        }
+        return Promise.when(fulfilled: attachmentPromises)
     }
 
     // Some host apps (e.g. iOS Photos.app) sometimes auto-converts some video formats (e.g. com.apple.quicktime-movie)
@@ -315,7 +144,7 @@ public enum OWSItemProvider {
     // is no difference between the contents of the file, yet one works one doesn't.
     // Perhaps the AVFoundation APIs require some extra file system permssion we don't have in the
     // passed through URL.
-    private static func isVideoNeedingRelocation(itemProvider: NSItemProvider, itemUrl: URL) -> Bool {
+    fileprivate static func isVideoNeedingRelocation(itemProvider: NSItemProvider, itemUrl: URL) -> Bool {
         let pathExtension = itemUrl.pathExtension
         guard pathExtension.count > 0 else {
             Logger.verbose("item URL has no file extension: \(itemUrl).")
@@ -438,7 +267,7 @@ extension NSItemProvider {
                 return (.value(attachment), nil)
 
             case .pkPass:
-                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: "com.apple.pkpass")
+                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kOWSTypePassKitPass)
                 return (.value(attachment), nil)
 
             case .fileUrl(let itemUrl):
@@ -481,5 +310,3 @@ fileprivate extension SignalAttachment {
         }
     }
 }
-
-
