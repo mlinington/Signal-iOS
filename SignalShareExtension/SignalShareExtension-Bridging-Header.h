@@ -6,7 +6,6 @@
 #import <UIKit/UIKit.h>
 
 // Separate iOS Frameworks from other imports.
-#import "NSItemProvider+TypedAccessors.h"
 #import "SAEScreenLockViewController.h"
 #import "ShareAppExtensionContext.h"
 #import <SignalCoreKit/NSObject+OWS.h>
