@@ -516,16 +516,16 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
         // finished building them.
         if selectedThread == nil { showPrimaryViewController(conversationPicker) }
 
-        firstly(on: .sharedUserInitiated) { () -> Promise<[OWSItemProvider.UnloadedItem]> in
-            guard let inputItems = self.extensionContext?.inputItems as? [NSExtensionItem] else {
+        firstly(on: .sharedUserInitiated) { () -> Promise<[NSItemProvider.AttachmentPayload]> in
+            // The NSExtensionActivationRule predicate informs iOS that we expect exactly one NSExtensionItem
+            if let item = self.extensionContext?.inputItems.first as? NSExtensionItem {
+                return self.attachmentPayloads(for: item)
+            } else {
                 throw OWSAssertionError("no input item")
             }
-            let result = try OWSItemProvider.itemsToLoad(inputItems: inputItems)
-            return Promise.value(result)
-        }.then(on: .sharedUserInitiated) { [weak self] (unloadedItems: [OWSItemProvider.UnloadedItem]) -> Promise<[NSItemProvider.AttachmentPayload]> in
-            return OWSItemProvider.loadItems(unloadedItems: unloadedItems)
-        }.then(on: .sharedUserInitiated) { [weak self] (loadedItems: [NSItemProvider.AttachmentPayload]) -> Promise<[SignalAttachment]> in
-            return OWSItemProvider.buildAttachments(loadedItems: loadedItems)
+        }.then(on: .sharedUserInitiated) { (loadedItems: [NSItemProvider.AttachmentPayload]) -> Promise<[SignalAttachment]> in
+            OWSItemProvider.buildAttachments(loadedItems: loadedItems)
+
         }.done { [weak self] (attachments: [SignalAttachment]) in
             guard let self = self else { throw PromiseError.cancelled }
 
@@ -579,6 +579,81 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
         Logger.debug("presentScreenLock: \(screenLockUI)")
         showPrimaryViewController(screenLockUI)
         Logger.info("showing screen lock")
+    }
+
+    private func attachmentPayloads(for inputItem: NSExtensionItem) -> Promise<[NSItemProvider.AttachmentPayload]> {
+        let availableAttachments = inputItem.attachments ?? []
+
+        // Prefer a URL if available. If there's an image item and a URL item,
+        // the URL is generally more useful. e.g. when sharing an app from the
+        // App Store the image would be the app icon and the URL is the link
+        // to the application.
+        if let urlItem = availableAttachments.first(where: { $0.isExclusivelyUrlItem }) {
+            return urlItem.attachmentPayload(for: .webUrl).map { [$0] }
+        }
+
+        // We only allow sharing 1 item, unless they are visual media items. And if they are
+        // visualMediaItems we share *only* the visual media items - a mix of visual and non
+        // visual items is not supported.
+        let visualAttachments = availableAttachments.filter { $0.isVisualMediaItem }
+        let attachmentsToSend = visualAttachments.count > 0 ? visualAttachments : availableAttachments
+
+        if attachmentsToSend.count > 0 {
+            return Promise.when(fulfilled: attachmentsToSend.map {
+                $0.getPreferredSharingAttachmentPayload()
+            })
+        } else {
+            return Promise(error: OWSAssertionError("No supported attachments"))
+        }
+    }
+}
+
+extension NSItemProvider {
+
+    // A single inputItem can have multiple attachments, e.g. sharing from Firefox gives
+    // one url attachment and another text attachment, where the url would be https://some-news.com/articles/123-cat-stuck-in-tree
+    // and the text attachment would be something like "Breaking news - cat stuck in tree"
+    //
+    // FIXME: For now, we prefer the URL provider and discard the text provider, since it's more useful to share the URL than the caption
+    // but we *should* include both. This will be a bigger change though since our share extension is currently heavily predicated
+    // on one itemProvider per share.
+    var isExclusivelyUrlItem: Bool {
+        if registeredTypeIdentifiers.count == 1 {
+            return registeredTypeIdentifiers.first == (kUTTypeURL as String)
+        } else {
+            return false
+        }
+    }
+
+    var isVisualMediaItem: Bool {
+        let availableTypes = availableItemTypes
+        return availableTypes.contains(.movie) || availableTypes.contains(.image)
+    }
+
+    func getPreferredSharingAttachmentPayload() -> Promise<NSItemProvider.AttachmentPayload> {
+        // The share extension has always had an ordered preference for attachment variants.
+        // More correct behavior might involve the extension sharing multiple representations of the same attachment
+        // but for now, whatever turns up first in this ordered preference is the payload that gets sent.
+        let availableTypes = availableItemTypes
+        if availableItemTypes.contains(.movie) {
+            return attachmentPayload(for: .movie)
+        } else if availableTypes.contains(.image) {
+            return attachmentPayload(for: .image)
+        } else if availableTypes.contains(.fileUrl) {
+            return attachmentPayload(for: .fileUrl)
+        } else if availableTypes.contains(.contact) {
+            return attachmentPayload(for: .contact)
+        } else if availableTypes.contains(.text) {
+            return attachmentPayload(for: .text)
+        } else if availableTypes.contains(.pdf) {
+            return attachmentPayload(for: .pdf)
+        } else if availableTypes.contains(.pkPass) {
+            return attachmentPayload(for: .pkPass)
+        } else if availableTypes.contains(.webUrl) {
+            return attachmentPayload(for: .webUrl)
+        } else {
+            return Promise(error: OWSAssertionError("No matching types"))
+        }
     }
 }
 
