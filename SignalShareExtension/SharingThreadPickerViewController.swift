@@ -199,7 +199,7 @@ extension SharingThreadPickerViewController {
                                 transaction: transaction
                             )
                             preparer.insertMessage(linkPreviewDraft: linkPreviewDraft, transaction: transaction)
-                            self.outgoingMessages.append(preparer.unpreparedMessage)
+                            DispatchQueue.main.async { self.outgoingMessages.append(preparer.unpreparedMessage) }
                             return ThreadUtil.enqueueMessagePromise(
                                 message: preparer.unpreparedMessage,
                                 isHighPriority: true,
@@ -231,7 +231,7 @@ extension SharingThreadPickerViewController {
                         builder.expiresInSeconds = thread.disappearingMessagesDuration(with: transaction)
                         let message = builder.build(transaction: transaction)
                         message.anyInsert(transaction: transaction)
-                        self.outgoingMessages.append(message)
+                        DispatchQueue.main.async { self.outgoingMessages.append(message) }
                         return ThreadUtil.enqueueMessagePromise(
                             message: message,
                             isHighPriority: true,
