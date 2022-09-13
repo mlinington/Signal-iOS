@@ -23,7 +23,7 @@ public enum OWSItemProvider {
         let itemType: ItemType
     }
 
-    public struct LoadedItem {
+    private struct LoadedItem {
         enum LoadedItemPayload {
             case fileUrl(_ fileUrl: URL)
             case inMemoryImage(_ image: UIImage)
@@ -70,6 +70,27 @@ public enum OWSItemProvider {
 
         var debugDescription: String {
             payload.debugDescription
+        }
+
+        fileprivate func asAttachmentPayload() throws -> NSItemProvider.AttachmentPayload {
+            switch payload {
+            case .fileUrl(let fileUrl):
+                do {
+                    if OWSItemProvider.isVideoNeedingRelocation(itemProvider: itemProvider, itemUrl: fileUrl) {
+                        return .fileUrl(try SignalAttachment.copyToVideoTempDir(url: fileUrl))
+                    } else {
+                        return .fileUrl(fileUrl)
+                    }
+                } catch {
+                    throw OWSAssertionError("Could not copy video")
+                }
+            case .inMemoryImage(let image): return .inMemoryImage(image)
+            case .webUrl(let webUrl): return .webUrl(webUrl)
+            case .contact(let contactData): return .contact(contactData)
+            case .text(let text): return .text(text)
+            case .pdf(let data): return .pdf(data)
+            case .pkPass(let data): return .pkPass(data)
+            }
         }
     }
 
@@ -146,19 +167,19 @@ public enum OWSItemProvider {
         throw OWSAssertionError("no input item")
     }
 
-    public static func loadItems(unloadedItems: [UnloadedItem]) -> Promise<[LoadedItem]> {
-        let loadPromises: [Promise<LoadedItem>] = unloadedItems.map { unloadedItem in
-            loadItem(unloadedItem: unloadedItem)
+    public static func loadItems(unloadedItems: [UnloadedItem]) -> Promise<[NSItemProvider.AttachmentPayload]> {
+        let loadPromises: [Promise<NSItemProvider.AttachmentPayload>] = unloadedItems.map { unloadedItem in
+            loadItem(unloadedItem: unloadedItem).map { try $0.asAttachmentPayload() }
         }
 
         return Promise.when(fulfilled: loadPromises)
     }
 
-    public static func buildAttachments(loadedItems: [LoadedItem]) -> Promise<[SignalAttachment]> {
+    public static func buildAttachments(loadedItems: [NSItemProvider.AttachmentPayload]) -> Promise<[SignalAttachment]> {
         var attachmentPromises = [Promise<SignalAttachment>]()
         for loadedItem in loadedItems {
             attachmentPromises.append(firstly(on: .sharedUserInitiated) { () -> Promise<SignalAttachment> in
-                buildAttachment(loadedItem: loadedItem)
+                loadedItem.loadAsSignalAttachment().0
             })
         }
         return Promise.when(fulfilled: attachmentPromises)
@@ -274,108 +295,6 @@ public enum OWSItemProvider {
         }
     }
 
-    /// Creates an attachment with from a generic "loaded item". The data source
-    /// backing the returned attachment must "own" the data it provides - i.e.,
-    /// it must not refer to data/files that other components refer to.
-    private static func buildAttachment(loadedItem: LoadedItem) -> Promise<SignalAttachment> {
-        let itemProvider = loadedItem.itemProvider
-        switch loadedItem.payload {
-        case .webUrl(let webUrl):
-            let dataSource = DataSourceValue.dataSource(withOversizeText: webUrl.absoluteString)
-            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kUTTypeText as String)
-            attachment.isConvertibleToTextMessage = true
-            return Promise.value(attachment)
-        case .contact(let contactData):
-            let dataSource = DataSourceValue.dataSource(with: contactData, utiType: kUTTypeContact as String)
-            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kUTTypeContact as String)
-            attachment.isConvertibleToContactShare = true
-            return Promise.value(attachment)
-        case .text(let text):
-            let dataSource = DataSourceValue.dataSource(withOversizeText: text)
-            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kUTTypeText as String)
-            attachment.isConvertibleToTextMessage = true
-            return Promise.value(attachment)
-        case .fileUrl(let originalItemUrl):
-            var itemUrl = originalItemUrl
-            do {
-                if isVideoNeedingRelocation(itemProvider: itemProvider, itemUrl: itemUrl) {
-                    itemUrl = try SignalAttachment.copyToVideoTempDir(url: itemUrl)
-                }
-            } catch {
-    //            let error = ShareViewControllerError.assertionError(description: "Could not copy video")
-                let error = OWSAssertionError("Could not copy video")
-                return Promise(error: error)
-            }
-
-            guard let dataSource = try? DataSourcePath.dataSource(with: itemUrl, shouldDeleteOnDeallocation: false) else {
-    //            let error = ShareViewControllerError.assertionError(description: "Attachment URL was not a file URL")
-                let error = OWSAssertionError("Attachment URL was not a file URL")
-
-                return Promise(error: error)
-            }
-            dataSource.sourceFilename = itemUrl.lastPathComponent
-
-            let utiType = MIMETypeUtil.utiType(forFileExtension: itemUrl.pathExtension) ?? kUTTypeData as String
-
-            if SignalAttachment.isVideoThatNeedsCompression(dataSource: dataSource, dataUTI: utiType) {
-                // This can happen, e.g. when sharing a quicktime-video from iCloud drive.
-
-                let (promise, exportSession) = SignalAttachment.compressVideoAsMp4(dataSource: dataSource, dataUTI: utiType)
-
-                // TODO: How can we move waiting for this export to the end of the share flow rather than having to do it up front?
-                // Ideally we'd be able to start it here, and not block the UI on conversion unless there's still work to be done
-                // when the user hits "send".
-                // TODO2: Figure this out again
-//                if let exportSession = exportSession {
-//                    DispatchQueue.main.async {
-//                        let progressPoller = ProgressPoller(timeInterval: 0.1, ratioCompleteBlock: { return exportSession.progress })
-//    
-//                        self.progressPoller = progressPoller
-//                        progressPoller.startPolling()
-//    
-//                        self.loadViewController.progress = progressPoller.progress
-//                    }
-//                }
-
-                return promise
-            }
-
-            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: utiType)
-
-            // If we already own the attachment's data - i.e. we have copied it
-            // from the URL originally passed in, and therefore no one else can
-            // be referencing it - we can return the attachment as-is...
-            if attachment.dataUrl != originalItemUrl {
-                return Promise.value(attachment)
-            }
-
-            // ...otherwise, we should clone the attachment to ensure we aren't
-            // touching data someone else might be referencing.
-            do {
-                return Promise.value(try attachment.cloneAttachment())
-            } catch {
-    //            let error = ShareViewControllerError.assertionError(description: "Failed to clone attachment")
-                let error = OWSAssertionError("Failed to clone attachment")
-                return Promise(error: error)
-            }
-        case .inMemoryImage(let image):
-            guard let pngData = image.pngData() else {
-                return Promise(error: OWSAssertionError("pngData was unexpectedly nil"))
-            }
-            let dataSource = DataSourceValue.dataSource(with: pngData, fileExtension: "png")
-            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kUTTypePNG as String)
-            return Promise.value(attachment)
-        case .pdf(let pdf):
-            let dataSource = DataSourceValue.dataSource(with: pdf, fileExtension: "pdf")
-            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kUTTypePDF as String)
-            return Promise.value(attachment)
-        case .pkPass(let pkPass):
-            let dataSource = DataSourceValue.dataSource(with: pkPass, fileExtension: "pkpass")
-            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: "com.apple.pkpass")
-            return Promise.value(attachment)
-        }
-    }
-
     // Some host apps (e.g. iOS Photos.app) sometimes auto-converts some video formats (e.g. com.apple.quicktime-movie)
     // into mp4s as part of the NSItemProvider `loadItem` API. (Some files the Photo's app doesn't auto-convert)
     //
@@ -418,3 +337,149 @@ public enum OWSItemProvider {
         return !itemProvider.registeredTypeIdentifiers.contains(kUTTypeMPEG4 as String)
     }
 }
+
+extension NSItemProvider {
+    public enum AttachmentPayload {
+        case fileUrl(_ fileUrl: URL)
+        case inMemoryImage(_ image: UIImage)
+        case webUrl(_ webUrl: URL)
+        case contact(_ contactData: Data)
+        case text(_ text: String)
+        case pdf(_ data: Data)
+        case pkPass(_ data: Data)
+
+        var debugDescription: String {
+            switch self {
+            case .fileUrl:
+                return "fileUrl"
+            case .inMemoryImage:
+                return "inMemoryImage"
+            case .webUrl:
+                return "webUrl"
+            case .contact:
+                return "contact"
+            case .text:
+                return "text"
+            case .pdf:
+                return "pdf"
+            case .pkPass:
+                return "pkPass"
+            }
+        }
+
+        private func createDataSource() throws -> DataSource? {
+            switch self {
+            case .webUrl(let webUrl):
+                return DataSourceValue.dataSource(withOversizeText: webUrl.absoluteString)
+            case .contact(let contactData):
+                return DataSourceValue.dataSource(with: contactData, utiType: kUTTypeContact as String)
+            case .text(let text):
+                return DataSourceValue.dataSource(withOversizeText: text)
+            case .inMemoryImage(let image):
+                if let pngData = image.pngData() {
+                    return DataSourceValue.dataSource(with: pngData, fileExtension: "png")
+                } else {
+                    throw OWSAssertionError("pngData was unexpectedly nil")
+                }
+            case .pdf(let pdf):
+                return DataSourceValue.dataSource(with: pdf, fileExtension: "pdf")
+            case .pkPass(let pkPass):
+                return DataSourceValue.dataSource(with: pkPass, fileExtension: "pkpass")
+            case .fileUrl(let itemUrl):
+                do {
+                    let dataSource = try DataSourcePath.dataSource(with: itemUrl, shouldDeleteOnDeallocation: false)
+                    dataSource.sourceFilename = itemUrl.lastPathComponent
+                    return dataSource
+                } catch {
+                    throw OWSAssertionError("Attachment URL was not a file URL")
+                }
+            }
+        }
+
+        /// Creates an attachment with from a generic "loaded item". The data source
+        /// backing the returned attachment must "own" the data it provides - i.e.,
+        /// it must not refer to data/files that other components refer to.
+
+        /// Returns a Promise for the attachment and an optional progress value. If the progress
+        /// is non-nil, this can be used to estimate how close the SignalAttachment promise is
+        /// to completion
+        // Would it be useful to build progress reporting in to Promises? Maybe! For now, they're
+        // passed around separately.
+        func loadAsSignalAttachment() -> (Promise<SignalAttachment>, Float?) {
+            let dataSource: DataSource?
+            do {
+                dataSource = try createDataSource()
+            } catch {
+                return (Promise(error: error), nil)
+            }
+
+            switch self {
+            case .webUrl:
+                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kUTTypeText as String)
+                attachment.isConvertibleToTextMessage = true
+                return (.value(attachment), nil)
+
+            case .contact:
+                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kUTTypeContact as String)
+                attachment.isConvertibleToContactShare = true
+                return (.value(attachment), nil)
+
+            case .text:
+                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kUTTypeText as String)
+                attachment.isConvertibleToTextMessage = true
+                return (.value(attachment), nil)
+
+            case .inMemoryImage:
+                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kUTTypePNG as String)
+                return (.value(attachment), nil)
+
+            case .pdf:
+                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: kUTTypePDF as String)
+                return (.value(attachment), nil)
+
+            case .pkPass:
+                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: "com.apple.pkpass")
+                return (.value(attachment), nil)
+
+            case .fileUrl(let itemUrl):
+                let utiType = MIMETypeUtil.utiType(forFileExtension: itemUrl.pathExtension) ?? kUTTypeData as String
+                guard let dataSource = dataSource else {
+                    return (Promise(error: OWSAssertionError("Attachment URL was not a file URL")), nil)
+                }
+
+                if SignalAttachment.isVideoThatNeedsCompression(dataSource: dataSource, dataUTI: utiType) {
+                    // This can happen, e.g. when sharing a quicktime-video from iCloud drive.
+                    let (promise, exportSession) = SignalAttachment.compressVideoAsMp4(dataSource: dataSource, dataUTI: utiType)
+                    // MICHLIN FIX: PROGRESS REPORTING
+                    return (promise, exportSession?.progress)
+
+                } else {
+                    let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: utiType)
+
+                    // If we already own the attachment's data - i.e. we have copied it
+                    // from the URL originally passed in, and therefore no one else can
+                    // be referencing it - we can return the attachment as-is...
+                    if attachment.dataUrl != itemUrl {
+                        return (Promise.value(attachment), nil)
+                    } else {
+                        // ...otherwise, we should clone the attachment to ensure we aren't
+                        // touching data someone else might be referencing.
+                        return (attachment.clonePromise(), nil)
+                    }
+                }
+            }
+        }
+    }
+}
+
+fileprivate extension SignalAttachment {
+    func clonePromise() -> Promise<SignalAttachment> {
+        do {
+            return .value(try cloneAttachment())
+        } catch {
+            return Promise(error: error)
+        }
+    }
+}
+
+

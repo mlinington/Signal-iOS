@@ -522,13 +522,9 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
             }
             let result = try OWSItemProvider.itemsToLoad(inputItems: inputItems)
             return Promise.value(result)
-        }.then(on: .sharedUserInitiated) { [weak self] (unloadedItems: [OWSItemProvider.UnloadedItem]) -> Promise<[OWSItemProvider.LoadedItem]> in
-            guard let self = self else { throw PromiseError.cancelled }
-
+        }.then(on: .sharedUserInitiated) { [weak self] (unloadedItems: [OWSItemProvider.UnloadedItem]) -> Promise<[NSItemProvider.AttachmentPayload]> in
             return OWSItemProvider.loadItems(unloadedItems: unloadedItems)
-        }.then(on: .sharedUserInitiated) { [weak self] (loadedItems: [OWSItemProvider.LoadedItem]) -> Promise<[SignalAttachment]> in
-            guard let self = self else { throw PromiseError.cancelled }
-
+        }.then(on: .sharedUserInitiated) { [weak self] (loadedItems: [NSItemProvider.AttachmentPayload]) -> Promise<[SignalAttachment]> in
             return OWSItemProvider.buildAttachments(loadedItems: loadedItems)
         }.done { [weak self] (attachments: [SignalAttachment]) in
             guard let self = self else { throw PromiseError.cancelled }
