@@ -644,34 +644,22 @@ extension NSItemProvider {
     }
 
     var isVisualMediaItem: Bool {
-        let availableTypes = availableItemTypes
-        return availableTypes.contains(.movie) || availableTypes.contains(.image)
+        hasItem(of: .movie) || hasItem(of: .image)
     }
 
     func getPreferredSharingAttachmentPayload() -> Promise<NSItemProvider.AttachmentPayload> {
         // The share extension has always had an ordered preference for attachment variants.
         // More correct behavior might involve the extension sharing multiple representations of the same attachment
         // but for now, whatever turns up first in this ordered preference is the payload that gets sent.
-        let availableTypes = availableItemTypes
-        if availableItemTypes.contains(.movie) {
-            return attachmentPayload(for: .movie)
-        } else if availableTypes.contains(.image) {
-            return attachmentPayload(for: .image)
-        } else if availableTypes.contains(.fileUrl) {
-            return attachmentPayload(for: .fileUrl)
-        } else if availableTypes.contains(.contact) {
-            return attachmentPayload(for: .contact)
-        } else if availableTypes.contains(.text) {
-            return attachmentPayload(for: .text)
-        } else if availableTypes.contains(.pdf) {
-            return attachmentPayload(for: .pdf)
-        } else if availableTypes.contains(.pkPass) {
-            return attachmentPayload(for: .pkPass)
-        } else if availableTypes.contains(.webUrl) {
-            return attachmentPayload(for: .webUrl)
-        } else {
-            return Promise(error: OWSAssertionError("No matching types"))
-        }
+        let orderedPreference: [NSItemProvider.ItemType] = [
+            .movie, .image, .fileUrl, .contact, .text, .pdf, .pkPass, .webUrl
+        ]
+
+        let preferredPayloadPromise = orderedPreference
+            .first(where: { hasItem(of: $0) })
+            .map { attachmentPayload(for: $0) }
+
+        return preferredPayloadPromise ?? Promise(error: OWSAssertionError("No matching types"))
     }
 }
 

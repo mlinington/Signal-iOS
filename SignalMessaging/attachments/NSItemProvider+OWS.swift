@@ -9,6 +9,8 @@ import CoreServices
 private let kOWSTypePassKitPass = "com.apple.pkpass"
 private let kOWSTypeHeic = "public.heic"
 
+// MARK: - NSItemProvider -> AttachmentPayload
+
 public extension NSItemProvider {
     enum ItemType {
         case movie
@@ -19,44 +21,54 @@ public extension NSItemProvider {
         case text
         case pdf
         case pkPass
+
+        /// The type identifier used when checking item conformance on NSItemProvider
+        fileprivate var lookupTypeIdentifier: String {
+            switch self {
+            case .movie:    return (kUTTypeMovie as String)
+            case .image:    return (kUTTypeImage as String)
+            case .webUrl:   return (kUTTypeURL as String)
+            case .fileUrl:  return (kUTTypeFileURL as String)
+            case .contact:  return (kUTTypeVCard as String)
+            case .text:     return (kUTTypeText as String)
+            case .pdf:      return (kUTTypePDF as String)
+            case .pkPass:   return (kOWSTypePassKitPass as String)
+            }
+        }
+
+        /// The type identifier used when loading an item from NSItemProvider
+        /// (Why is this different from `lookupTypeIdentifier`? I'm not entirely sure but I'm leaving
+        /// this as-is to maintain existing behavior. It's very likely these could be consolidated in the future.
+        fileprivate var loadTypeIdentifier: String {
+            switch self {
+            case .contact:
+                return (kUTTypeContact as String)
+            default:
+                return lookupTypeIdentifier
+            }
+        }
     }
 
-    var availableItemTypes: Set<ItemType> {
-        var result = Set<ItemType>()
-        if hasItemConformingToTypeIdentifier(kUTTypeMovie as String) {
-            result.insert(.movie)
+    func hasItem(of type: ItemType) -> Bool {
+        // The fileURL type identifier (public.file-url) itself conforms to
+        // the URL type identifier (public.url). There's no identifier specifying
+        // *just* a webUrl. A best effort fix is to consider there to be a webUrl
+        // item if there's an item matching public.url, but no item matching
+        // public.file-url
+        if type == .webUrl, hasItemConformingToTypeIdentifier(ItemType.fileUrl.lookupTypeIdentifier) {
+            return false
+        } else {
+            return hasItemConformingToTypeIdentifier(type.lookupTypeIdentifier)
         }
-        if hasItemConformingToTypeIdentifier(kUTTypeImage as String) {
-            result.insert(.image)
-        }
-        if hasItemConformingToTypeIdentifier(kUTTypeURL as String) {
-            result.insert(.webUrl)
-        }
-        if hasItemConformingToTypeIdentifier(kUTTypeFileURL as String) {
-            result.insert(.fileUrl)
-        }
-        if hasItemConformingToTypeIdentifier(kUTTypeVCard as String) {
-            result.insert(.contact)
-        }
-        if hasItemConformingToTypeIdentifier(kUTTypeText as String) {
-            result.insert(.text)
-        }
-        if hasItemConformingToTypeIdentifier(kUTTypePDF as String) {
-            result.insert(.pdf)
-        }
-        if hasItemConformingToTypeIdentifier(kOWSTypePassKitPass as String) {
-            result.insert(.pkPass)
-        }
-        return result
     }
 
     func attachmentPayload(for type: ItemType) -> Promise<AttachmentPayload> {
-        guard availableItemTypes.contains(type) else { return Promise(error: OWSAssertionError("")) }
+        guard hasItem(of: type) else { return Promise(error: OWSAssertionError("")) }
 
         switch type {
         case .movie:
             return firstly {
-                loadObject(URL.self, forTypeIdentifier: kUTTypeMovie as String, options: nil)
+                loadObject(URL.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil)
             }.map { itemUrl in
                 if self.isVideoNeedingRelocation(itemUrl: itemUrl) {
                     return .fileUrl(try SignalAttachment.copyToVideoTempDir(url: itemUrl))
@@ -80,7 +92,7 @@ public extension NSItemProvider {
             if #available(iOS 14, *), registeredTypeIdentifiers.contains(kOWSTypeHeic) {
                 desiredTypeIdentifier = kOWSTypeHeic
             } else {
-                desiredTypeIdentifier = kUTTypeImage as String
+                desiredTypeIdentifier = type.loadTypeIdentifier
             }
 
             return firstly {
@@ -92,28 +104,27 @@ public extension NSItemProvider {
                     code: NSItemProvider.ErrorCode.unexpectedValueClassError.rawValue)
 
                 if isTypeMismatchError {
-                    return self.loadObject(UIImage.self, forTypeIdentifier: kUTTypeImage as String, options: nil).map { .inMemoryImage($0) }
+                    // Should the type identifier used here be the desiredTypeIdentifier from above? Leaving as-is for now.
+                    return self.loadObject(UIImage.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .inMemoryImage($0) }
                 } else {
                     throw error
                 }
             }
         case .webUrl:
-            return loadObject(URL.self, forTypeIdentifier: kUTTypeURL as String, options: nil).map { .webUrl($0) }
+            return loadObject(URL.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .webUrl($0) }
         case .fileUrl:
-            return loadObject(URL.self, forTypeIdentifier: kUTTypeFileURL as String, options: nil).map { .fileUrl($0) }
+            return loadObject(URL.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .fileUrl($0) }
         case .contact:
-            return loadObject(Data.self, forTypeIdentifier: kUTTypeContact as String, options: nil).map { .contact($0) }
+            return loadObject(Data.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .contact($0) }
         case .text:
-            return loadObject(String.self, forTypeIdentifier: kUTTypeText as String, options: nil).map { .text($0) }
+            return loadObject(String.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .text($0) }
         case .pdf:
-            return loadObject(Data.self, forTypeIdentifier: kUTTypePDF as String, options: nil).map { .pdf($0) }
+            return loadObject(Data.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .pdf($0) }
         case .pkPass:
-            return loadObject(Data.self, forTypeIdentifier: kOWSTypePassKitPass, options: nil).map { .pkPass($0) }
+            return loadObject(Data.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .pkPass($0) }
         }
     }
-}
 
-extension NSItemProvider {
     // Some host apps (e.g. iOS Photos.app) sometimes auto-converts some video formats (e.g. com.apple.quicktime-movie)
     // into mp4s as part of the NSItemProvider `loadItem` API. (Some files the Photo's app doesn't auto-convert)
     //
@@ -158,6 +169,10 @@ extension NSItemProvider {
 }
 
 extension NSItemProvider {
+
+    /// A representation  of an attachment that we own that has been retrieved from an NSItemProvider
+    /// If you have an AttachmentPayload, you either have the direct content, or a fileURL somewhere in
+    /// out container.
     public enum AttachmentPayload {
         case fileUrl(_ fileUrl: URL)
         case inMemoryImage(_ image: UIImage)
