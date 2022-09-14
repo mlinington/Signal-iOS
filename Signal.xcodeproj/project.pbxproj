@@ -1094,6 +1094,7 @@
 		E75DD3E02810CDBD00E32C36 /* SubscriptionManagerTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75DD3DF2810CDBD00E32C36 /* SubscriptionManagerTest.swift */; };
 		E7D0A2CF28D01F370072F642 /* NSItemProvider+OWS.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7D0A2CE28D01F370072F642 /* NSItemProvider+OWS.swift */; };
 		E7D0A2D028D0232E0072F642 /* NSItemProvider+Promises.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34ED55A023D0D59700446E39 /* NSItemProvider+Promises.swift */; };
+		E7D0A2D528D144490072F642 /* OWSProgressReporting.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7D0A2D428D144490072F642 /* OWSProgressReporting.swift */; };
 		E7D7C93F28B580AC003F043B /* Bundle+OWS.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7D7C93E28B580AC003F043B /* Bundle+OWS.swift */; };
 		F0038600273F6388000B5ABD /* DonationUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00385FD273F6388000B5ABD /* DonationUtilities.swift */; };
 		F0038601273F6388000B5ABD /* Stripe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00385FE273F6388000B5ABD /* Stripe.swift */; };
@@ -3472,6 +3473,7 @@
 		E44AD4E524E98F430035D7B8 /* PhotoCaptureDismiss.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureDismiss.swift; sourceTree = "<group>"; };
 		E75DD3DF2810CDBD00E32C36 /* SubscriptionManagerTest.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SubscriptionManagerTest.swift; sourceTree = "<group>"; };
 		E7D0A2CE28D01F370072F642 /* NSItemProvider+OWS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSItemProvider+OWS.swift"; sourceTree = "<group>"; };
+		E7D0A2D428D144490072F642 /* OWSProgressReporting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OWSProgressReporting.swift; sourceTree = "<group>"; };
 		E7D7C93E28B580AC003F043B /* Bundle+OWS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bundle+OWS.swift"; sourceTree = "<group>"; };
 		F00385FD273F6388000B5ABD /* DonationUtilities.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DonationUtilities.swift; sourceTree = "<group>"; };
 		F00385FE273F6388000B5ABD /* Stripe.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Stripe.swift; sourceTree = "<group>"; };
@@ -4758,6 +4760,7 @@
 				346129BE1FD2068600532771 /* ThreadUtil.m */,
 				348C686C246B0B100039705A /* ThreadUtil.swift */,
 				3402AABE271DA2720084CBAE /* VoiceMessageModels.swift */,
+				E7D0A2D428D144490072F642 /* OWSProgressReporting.swift */,
 			);
 			path = utils;
 			sourceTree = "<group>";
@@ -9872,6 +9875,7 @@
 				3402A9E3271D96570084CBAE /* UIView+OWS.swift in Sources */,
 				88D23D0B23CEBF4400B0E74B /* UserNotificationsAdaptee.swift in Sources */,
 				347024A0238C85850078D72C /* VersionedProfilesImpl.swift in Sources */,
+				E7D0A2D528D144490072F642 /* OWSProgressReporting.swift in Sources */,
 				346129E31FD5C0BE00532771 /* VersionMigrations.m in Sources */,
 				3402AABF271DA2720084CBAE /* VoiceMessageModels.swift in Sources */,
 			);
