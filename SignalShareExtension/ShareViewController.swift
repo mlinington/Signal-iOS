@@ -524,7 +524,10 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
                 throw OWSAssertionError("no input item")
             }
         }.then(on: .sharedUserInitiated) { (loadedItems: [NSItemProvider.AttachmentPayload]) -> Promise<[SignalAttachment]> in
-            OWSItemProvider.buildAttachments(loadedItems: loadedItems)
+            let attachmentPromiseTuples = loadedItems.map { $0.loadAsSignalAttachment() }
+            let progressReporters = attachmentPromiseTuples.compactMap { $0.1 }
+            self.configureProgressPolling(progressReporters)
+            return Promise.when(fulfilled: attachmentPromiseTuples.map { $0.0 })
 
         }.done { [weak self] (attachments: [SignalAttachment]) in
             guard let self = self else { throw PromiseError.cancelled }
@@ -604,6 +607,21 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
             })
         } else {
             return Promise(error: OWSAssertionError("No supported attachments"))
+        }
+    }
+
+    private func configureProgressPolling(_ reporters: [OWSProgressReporting]) {
+        guard reporters.count > 0 else { return }
+
+        DispatchQueue.main.async {
+            let progressPoller = ProgressPoller(timeInterval: 0.1) {
+                let fractionalSum: Float = reporters.reduce(0) { $0 + $1.progress }
+                return fractionalSum / Float(reporters.count)
+            }
+
+            self.progressPoller = progressPoller
+            progressPoller.startPolling()
+            self.loadViewController.progress = progressPoller.progress
         }
     }
 }

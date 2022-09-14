@@ -58,7 +58,7 @@ public extension NSItemProvider {
             return firstly {
                 loadObject(URL.self, forTypeIdentifier: kUTTypeMovie as String, options: nil)
             }.map { itemUrl in
-                if OWSItemProvider.isVideoNeedingRelocation(itemProvider: self, itemUrl: itemUrl) {
+                if self.isVideoNeedingRelocation(itemUrl: itemUrl) {
                     return .fileUrl(try SignalAttachment.copyToVideoTempDir(url: itemUrl))
                 } else {
                     return .fileUrl(itemUrl)
@@ -113,17 +113,7 @@ public extension NSItemProvider {
     }
 }
 
-public enum OWSItemProvider {
-    public static func buildAttachments(loadedItems: [NSItemProvider.AttachmentPayload]) -> Promise<[SignalAttachment]> {
-        var attachmentPromises = [Promise<SignalAttachment>]()
-        for loadedItem in loadedItems {
-            attachmentPromises.append(firstly(on: .sharedUserInitiated) { () -> Promise<SignalAttachment> in
-                loadedItem.loadAsSignalAttachment().0
-            })
-        }
-        return Promise.when(fulfilled: attachmentPromises)
-    }
-
+extension NSItemProvider {
     // Some host apps (e.g. iOS Photos.app) sometimes auto-converts some video formats (e.g. com.apple.quicktime-movie)
     // into mp4s as part of the NSItemProvider `loadItem` API. (Some files the Photo's app doesn't auto-convert)
     //
@@ -144,7 +134,7 @@ public enum OWSItemProvider {
     // is no difference between the contents of the file, yet one works one doesn't.
     // Perhaps the AVFoundation APIs require some extra file system permssion we don't have in the
     // passed through URL.
-    fileprivate static func isVideoNeedingRelocation(itemProvider: NSItemProvider, itemUrl: URL) -> Bool {
+    fileprivate func isVideoNeedingRelocation(itemUrl: URL) -> Bool {
         let pathExtension = itemUrl.pathExtension
         guard pathExtension.count > 0 else {
             Logger.verbose("item URL has no file extension: \(itemUrl).")
@@ -163,7 +153,7 @@ public enum OWSItemProvider {
 
         // If video file already existed on disk as an mp4, then the host app didn't need to
         // apply any conversion, so no need to relocate the file.
-        return !itemProvider.registeredTypeIdentifiers.contains(kUTTypeMPEG4 as String)
+        return !registeredTypeIdentifiers.contains(kUTTypeMPEG4 as String)
     }
 }
 
@@ -229,12 +219,11 @@ extension NSItemProvider {
         /// backing the returned attachment must "own" the data it provides - i.e.,
         /// it must not refer to data/files that other components refer to.
 
-        /// Returns a Promise for the attachment and an optional progress value. If the progress
-        /// is non-nil, this can be used to estimate how close the SignalAttachment promise is
-        /// to completion
+        /// Returns a Promise for the attachment and an optional progress reporter. If the progress reporter
+        /// is non-nil, this can be used to estimate how close the SignalAttachment promise is to completion
         // Would it be useful to build progress reporting in to Promises? Maybe! For now, they're
         // passed around separately.
-        func loadAsSignalAttachment() -> (Promise<SignalAttachment>, Float?) {
+        public func loadAsSignalAttachment() -> (Promise<SignalAttachment>, OWSProgressReporting?) {
             let dataSource: DataSource?
             do {
                 dataSource = try createDataSource()
@@ -278,9 +267,7 @@ extension NSItemProvider {
 
                 if SignalAttachment.isVideoThatNeedsCompression(dataSource: dataSource, dataUTI: utiType) {
                     // This can happen, e.g. when sharing a quicktime-video from iCloud drive.
-                    let (promise, exportSession) = SignalAttachment.compressVideoAsMp4(dataSource: dataSource, dataUTI: utiType)
-                    // MICHLIN FIX: PROGRESS REPORTING
-                    return (promise, exportSession?.progress)
+                    return SignalAttachment.compressVideoAsMp4(dataSource: dataSource, dataUTI: utiType)
 
                 } else {
                     let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: utiType)
