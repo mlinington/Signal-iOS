@@ -9,53 +9,53 @@ import UniformTypeIdentifiers
 // MARK: - NSItemProvider -> AttachmentPayload
 
 public extension NSItemProvider {
-    enum ItemType {
+    enum ItemType: CaseIterable {
         case movie
         case image
         case webUrl
-        case fileUrl
         case contact
         case text
-        case pdf
-        case pkPass
+        case anyItem
 
         /// The type identifier used when checking item conformance on NSItemProvider
-        fileprivate var lookupTypeIdentifier: String {
+        fileprivate var typeIdentifier: String {
             switch self {
             case .movie:    return OWSUTType.movie.identifier
             case .image:    return OWSUTType.image.identifier
             case .webUrl:   return OWSUTType.url.identifier
-            case .fileUrl:  return OWSUTType.fileUrl.identifier
             case .contact:  return OWSUTType.contact.identifier
             case .text:     return OWSUTType.text.identifier
-            case .pdf:      return OWSUTType.pdf.identifier
-            case .pkPass:   return OWSUTType.passkit.identifier
-            }
-        }
-
-        /// The type identifier used when loading an item from NSItemProvider
-        /// (Why is this different from `lookupTypeIdentifier`? I'm not entirely sure but I'm leaving
-        /// this as-is to maintain existing behavior. It's very likely these could be consolidated in the future.
-        fileprivate var loadTypeIdentifier: String {
-            switch self {
-            case .contact:
-                return OWSUTType.contact.identifier
-            default:
-                return lookupTypeIdentifier
+            case .anyItem:  return OWSUTType.content.identifier
             }
         }
     }
 
     func hasItem(of type: ItemType) -> Bool {
-        // The fileURL type identifier (public.file-url) itself conforms to
-        // the URL type identifier (public.url). There's no identifier specifying
-        // *just* a webUrl. A best effort fix is to consider there to be a webUrl
-        // item if there's an item matching public.url, but no item matching
-        // public.file-url
-        if type == .webUrl, hasItemConformingToTypeIdentifier(ItemType.fileUrl.lookupTypeIdentifier) {
-            return false
-        } else {
-            return hasItemConformingToTypeIdentifier(type.lookupTypeIdentifier)
+        switch type {
+        case .movie, .image, .contact, .text:
+            return hasItemConformingToTypeIdentifier(type.typeIdentifier)
+
+        case .webUrl:
+            // The fileURL type identifier (public.file-url) itself conforms to
+            // the URL type identifier (public.url). There's no identifier specifying
+            // *just* a webUrl. A best effort fix is to consider there to be a webUrl
+            // item if there's an item matching public.url, but no item matching
+            // public.file-url
+            let hasUrl = hasItemConformingToTypeIdentifier(OWSUTType.url.identifier)
+            let hasFileUrl = hasItemConformingToTypeIdentifier(OWSUTType.fileUrl.identifier)
+            return hasUrl && !hasFileUrl
+
+        case .anyItem:
+            // From UTCoreTypes.h...
+            // [UTType.content is] for anything containing user-viewable document content
+            // (documents, pasteboard data, and document packages.)
+            // Types describing files or packages must also conform to `UTType.data` or
+            // `UTType.package` in order for the system to bind documents to them.
+
+            let isContent = hasItemConformingToTypeIdentifier(OWSUTType.content.identifier)
+            let isData = hasItemConformingToTypeIdentifier(OWSUTType.data.identifier)
+            let isPackage = hasItemConformingToTypeIdentifier(OWSUTType.package.identifier)
+            return isContent && (isData || isPackage)
         }
     }
 
@@ -64,15 +64,7 @@ public extension NSItemProvider {
 
         switch type {
         case .movie:
-            return firstly {
-                loadObject(URL.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil)
-            }.map { itemUrl in
-                if self.isVideoNeedingRelocation(itemUrl: itemUrl) {
-                    return .fileUrl(try SignalAttachment.copyToVideoTempDir(url: itemUrl))
-                } else {
-                    return .fileUrl(itemUrl)
-                }
-            }
+            return loadFile(forTypeIdentifier: type.typeIdentifier).map { .fileUrl($0) }
 
         case .image:
             // When multiple image formats are available, kUTTypeImage will
@@ -89,76 +81,30 @@ public extension NSItemProvider {
             if #available(iOS 14, *), registeredTypeIdentifiers.contains(OWSUTType.heic.identifier) {
                 desiredTypeIdentifier = OWSUTType.heic.identifier
             } else {
-                desiredTypeIdentifier = type.loadTypeIdentifier
+                desiredTypeIdentifier = type.typeIdentifier
             }
 
             return firstly {
-                loadObject(URL.self, forTypeIdentifier: desiredTypeIdentifier, options: nil).map { .fileUrl($0) }
+                loadFile(forTypeIdentifier: desiredTypeIdentifier).map { .fileUrl($0) }
             }.recover(on: .global()) { error -> Promise<AttachmentPayload> in
                 // If a URL wasn't available, fall back to an in-memory image
                 // One place this happens is when sharing from the screenshot app on iOS13
                 if (error as NSError).isMismatchedClassError {
                     // Should the type identifier used here be the desiredTypeIdentifier from above? Leaving as-is for now.
-                    return self.loadObject(UIImage.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .inMemoryImage($0) }
+                    return self.loadImage(forTypeIdentifier: type.typeIdentifier).map { .inMemoryImage($0) }
                 } else {
                     throw error
                 }
             }
         case .webUrl:
-            return loadObject(URL.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .webUrl($0) }
-        case .fileUrl:
-            return loadObject(URL.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .fileUrl($0) }
+            return loadUrl(forTypeIdentifier: type.typeIdentifier).map { .webUrl($0) }
         case .contact:
-            return loadObject(Data.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .contact($0) }
+            return loadFile(forTypeIdentifier: type.typeIdentifier).map { .contact($0) }
         case .text:
-            return loadObject(String.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .text($0) }
-        case .pdf:
-            return loadObject(Data.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .pdf($0) }
-        case .pkPass:
-            return loadObject(Data.self, forTypeIdentifier: type.loadTypeIdentifier, options: nil).map { .pkPass($0) }
+            return loadText(forTypeIdentifier: type.typeIdentifier).map { .text($0) }
+        case .anyItem:
+            return loadFile(forTypeIdentifier: type.typeIdentifier).map { .fileUrl($0) }
         }
-    }
-
-    // Some host apps (e.g. iOS Photos.app) sometimes auto-converts some video formats (e.g. com.apple.quicktime-movie)
-    // into mp4s as part of the NSItemProvider `loadItem` API. (Some files the Photo's app doesn't auto-convert)
-    //
-    // However, when using this url to the converted item, AVFoundation operations such as generating a
-    // preview image and playing the url in the AVMoviePlayer fails with an unhelpful error: "The operation could not be completed"
-    //
-    // We can work around this by first copying the media into our container.
-    //
-    // I don't understand why this is, and I haven't found any relevant documentation in the NSItemProvider
-    // or AVFoundation docs.
-    //
-    // Notes:
-    //
-    // These operations succeed when sending a video which initially existed on disk as an mp4.
-    // (e.g. Alice sends a video to Bob through the main app, which ensures it's an mp4. Bob saves it, then re-shares it)
-    //
-    // I *did* verify that the size and SHA256 sum of the original url matches that of the copied url. So there
-    // is no difference between the contents of the file, yet one works one doesn't.
-    // Perhaps the AVFoundation APIs require some extra file system permssion we don't have in the
-    // passed through URL.
-    fileprivate func isVideoNeedingRelocation(itemUrl: URL) -> Bool {
-        let pathExtension = itemUrl.pathExtension
-        guard pathExtension.count > 0 else {
-            Logger.verbose("item URL has no file extension: \(itemUrl).")
-            return false
-        }
-        guard let utiTypeForURL = MIMETypeUtil.utiType(forFileExtension: pathExtension) else {
-            Logger.verbose("item has unknown UTI type: \(itemUrl).")
-            return false
-        }
-        Logger.verbose("utiTypeForURL: \(utiTypeForURL)")
-        guard utiTypeForURL == OWSUTType.mpeg4.identifier else {
-            // Either it's not a video or it was a video which was not auto-converted to mp4.
-            // Not affected by the issue.
-            return false
-        }
-
-        // If video file already existed on disk as an mp4, then the host app didn't need to
-        // apply any conversion, so no need to relocate the file.
-        return !registeredTypeIdentifiers.contains(OWSUTType.mpeg4.identifier)
     }
 }
 
@@ -169,12 +115,10 @@ extension NSItemProvider {
     /// out container.
     public enum AttachmentPayload {
         case fileUrl(_ fileUrl: URL)
+        case contact(_ fileURL: URL)
         case inMemoryImage(_ image: UIImage)
         case webUrl(_ webUrl: URL)
-        case contact(_ contactData: Data)
         case text(_ text: String)
-        case pdf(_ data: Data)
-        case pkPass(_ data: Data)
 
         var debugDescription: String {
             switch self {
@@ -188,10 +132,6 @@ extension NSItemProvider {
                 return "contact"
             case .text:
                 return "text"
-            case .pdf:
-                return "pdf"
-            case .pkPass:
-                return "pkPass"
             }
         }
 
@@ -199,8 +139,6 @@ extension NSItemProvider {
             switch self {
             case .webUrl(let webUrl):
                 return DataSourceValue.dataSource(withOversizeText: webUrl.absoluteString)
-            case .contact(let contactData):
-                return DataSourceValue.dataSource(with: contactData, utiType: OWSUTType.contact.identifier)
             case .text(let text):
                 return DataSourceValue.dataSource(withOversizeText: text)
             case .inMemoryImage(let image):
@@ -209,11 +147,7 @@ extension NSItemProvider {
                 } else {
                     throw OWSAssertionError("pngData was unexpectedly nil")
                 }
-            case .pdf(let pdf):
-                return DataSourceValue.dataSource(with: pdf, fileExtension: "pdf")
-            case .pkPass(let pkPass):
-                return DataSourceValue.dataSource(with: pkPass, fileExtension: "pkpass")
-            case .fileUrl(let itemUrl):
+            case .fileUrl(let itemUrl), .contact(let itemUrl):
                 do {
                     let dataSource = try DataSourcePath.dataSource(with: itemUrl, shouldDeleteOnDeallocation: false)
                     dataSource.sourceFilename = itemUrl.lastPathComponent
@@ -258,14 +192,6 @@ extension NSItemProvider {
 
             case .inMemoryImage:
                 let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: OWSUTType.png.identifier)
-                return (.value(attachment), nil)
-
-            case .pdf:
-                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: OWSUTType.pdf.identifier)
-                return (.value(attachment), nil)
-
-            case .pkPass:
-                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: OWSUTType.passkit.identifier)
                 return (.value(attachment), nil)
 
             case .fileUrl(let itemUrl):
@@ -315,6 +241,8 @@ private enum OWSUTType {
     case png
     case data
     case heic
+    case content
+    case package
 
     var identifier: String {
         if #available(iOS 14, *) {
@@ -332,6 +260,8 @@ private enum OWSUTType {
             case .png:      return UTType.png.identifier
             case .data:     return UTType.data.identifier
             case .heic:     return UTType.heic.identifier
+            case .content:  return UTType.content.identifier
+            case .package:  return UTType.package.identifier
             }
         } else {
             switch self {
@@ -348,6 +278,8 @@ private enum OWSUTType {
             case .png:      return kUTTypePNG as String
             case .data:     return kUTTypeData as String
             case .heic:     return "public.heic"
+            case .content:  return kUTTypeContent as String
+            case .package:  return kUTTypePackage as String
             }
         }
     }

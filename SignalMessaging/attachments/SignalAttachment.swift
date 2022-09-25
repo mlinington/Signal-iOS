@@ -1186,7 +1186,15 @@ public class SignalAttachment: NSObject {
     }
 
     public class func copyToVideoTempDir(url fromUrl: URL) throws -> URL {
-        let baseDir = SignalAttachment.videoTempPath.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try copyUrl(fromUrl, to: SignalAttachment.videoTempPath)
+    }
+
+    public class func copyToImportTempDir(url fromUrl: URL) throws -> URL {
+        try copyUrl(fromUrl, to: SignalAttachment.importedTempPath)
+    }
+
+    private class func copyUrl(_ fromUrl: URL, to tempPath: URL) throws -> URL {
+        let baseDir = tempPath.appendingPathComponent(UUID().uuidString, isDirectory: true)
         OWSFileSystem.ensureDirectoryExists(baseDir.path)
         let toUrl = baseDir.appendingPathComponent(fromUrl.lastPathComponent)
 
@@ -1200,6 +1208,12 @@ public class SignalAttachment: NSObject {
         let videoDir = URL(fileURLWithPath: OWSTemporaryDirectory()).appendingPathComponent("video")
         OWSFileSystem.ensureDirectoryExists(videoDir.path)
         return videoDir
+    }
+
+    private class var importedTempPath: URL {
+        let importDir = URL(fileURLWithPath: OWSTemporaryDirectory()).appendingPathComponent("imports")
+        OWSFileSystem.ensureDirectoryExists(importDir.path)
+        return importDir
     }
 
     public class func compressVideoAsMp4(dataSource: DataSource, dataUTI: String) -> (Promise<SignalAttachment>, AVAssetExportSession?) {

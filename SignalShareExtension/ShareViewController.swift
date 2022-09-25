@@ -652,7 +652,7 @@ extension NSItemProvider {
         // More correct behavior might involve the extension sharing multiple representations of the same attachment
         // but for now, whatever turns up first in this ordered preference is the payload that gets sent.
         let orderedPreference: [NSItemProvider.ItemType] = [
-            .movie, .image, .fileUrl, .contact, .text, .pdf, .pkPass, .webUrl
+            .movie, .image, .contact, .text, .webUrl, .anyItem
         ]
 
         let preferredPayloadPromise = orderedPreference
