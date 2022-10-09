@@ -26,7 +26,6 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
     private var isReadyForAppExtensions = false
     private var areVersionMigrationsComplete = false
 
-    private var progressPoller: ProgressPoller?
     lazy var loadViewController = SAELoadViewController(delegate: self)
 
     public var shareViewNavigationController: OWSNavigationController?
@@ -535,8 +534,6 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
                 throw ShareViewControllerError.tooManyAttachments
             }
 
-            self.progressPoller = nil
-
             Logger.info("Setting picker attachments: \(attachments)")
             self.conversationPicker.attachments = attachments
 
@@ -604,17 +601,12 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
 
     private func configureProgressPolling(_ reporters: [Progress]) {
         guard reporters.count > 0 else { return }
-        // TODO
-//        DispatchQueue.main.async {
-//            let progressPoller = ProgressPoller(timeInterval: 0.1) {
-//                let fractionalSum: Float = reporters.reduce(0) { $0 + $1.progress }
-//                return fractionalSum / Float(reporters.count)
-//            }
-//
-//            self.progressPoller = progressPoller
-//            progressPoller.startPolling()
-//            self.loadViewController.progress = progressPoller.progress
-//        }
+
+        DispatchQueue.main.async {
+            let combinedProgress = Progress.discreteProgress(totalUnitCount: Int64(reporters.count))
+            reporters.forEach { combinedProgress.addChild($0, withPendingUnitCount: 1) }
+            self.loadViewController.progress = combinedProgress
+        }
     }
 }
 
@@ -681,49 +673,6 @@ extension ShareViewController: UINavigationControllerDelegate {
             navigationController.setNavigationBarHidden(true, animated: animated)
         default:
             navigationController.setNavigationBarHidden(false, animated: animated)
-        }
-    }
-}
-
-// Exposes a Progress object, whose progress is updated by polling the return of a given block
-private class ProgressPoller: NSObject {
-
-    let progress: Progress
-    private(set) var timer: Timer?
-
-    // Higher number offers higher ganularity
-    let progressTotalUnitCount: Int64 = 10000
-    private let timeInterval: Double
-    private let ratioCompleteBlock: () -> Float
-
-    init(timeInterval: TimeInterval, ratioCompleteBlock: @escaping () -> Float) {
-        self.timeInterval = timeInterval
-        self.ratioCompleteBlock = ratioCompleteBlock
-
-        self.progress = Progress()
-
-        progress.totalUnitCount = progressTotalUnitCount
-        progress.completedUnitCount = Int64(ratioCompleteBlock() * Float(progressTotalUnitCount))
-    }
-
-    func startPolling() {
-        guard self.timer == nil else {
-            owsFailDebug("already started timer")
-            return
-        }
-
-        self.timer = WeakTimer.scheduledTimer(timeInterval: timeInterval, target: self, userInfo: nil, repeats: true) { [weak self] (timer) in
-            guard let strongSelf = self else {
-                return
-            }
-
-            let completedUnitCount = Int64(strongSelf.ratioCompleteBlock() * Float(strongSelf.progressTotalUnitCount))
-            strongSelf.progress.completedUnitCount = completedUnitCount
-
-            if completedUnitCount == strongSelf.progressTotalUnitCount {
-                Logger.debug("progress complete")
-                timer.invalidate()
-            }
         }
     }
 }
