@@ -17,7 +17,13 @@ extension NSItemProvider {
                 // as this completion handler.
                 do {
                     let ownedPath = try SignalAttachment.copyToImportTempDir(url: url)
-                    loadFuture.resolve(ownedPath)
+                    let fetchedTypeIdentifier = try ownedPath.fetchTypeIdentifier()
+
+                    if fetchedTypeIdentifier.conforms(to: typeIdentifier) {
+                        loadFuture.resolve(ownedPath)
+                    } else {
+                        throw OWSAssertionError("Mismatched type")
+                    }
                 } catch {
                     loadFuture.reject(error)
                 }

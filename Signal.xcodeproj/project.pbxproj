@@ -1116,6 +1116,8 @@
 		D9C7CECF28ECC043001E87B6 /* NSAttributedString+SSK.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9C7CECE28ECC043001E87B6 /* NSAttributedString+SSK.swift */; };
 		E1368CBE18A1C36B00109378 /* MessageUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9EB5ABC1884C002007CBB57 /* MessageUI.framework */; };
 		E44AD4E624E98F440035D7B8 /* PhotoCaptureDismiss.swift in Sources */ = {isa = PBXBuildFile; fileRef = E44AD4E524E98F430035D7B8 /* PhotoCaptureDismiss.swift */; };
+		E710205F28F34B2B006D52F9 /* OWSUTType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E710205E28F34B2B006D52F9 /* OWSUTType.swift */; };
+		E710206328F34F64006D52F9 /* OWSUTTypeTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E710206128F34E49006D52F9 /* OWSUTTypeTest.swift */; };
 		E75DD3E02810CDBD00E32C36 /* SubscriptionManagerTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75DD3DF2810CDBD00E32C36 /* SubscriptionManagerTest.swift */; };
 		E7D0A2CF28D01F370072F642 /* NSItemProvider+OWS.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7D0A2CE28D01F370072F642 /* NSItemProvider+OWS.swift */; };
 		E7D0A2D028D0232E0072F642 /* NSItemProvider+Promises.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34ED55A023D0D59700446E39 /* NSItemProvider+Promises.swift */; };
@@ -3438,6 +3440,8 @@
 		E27EBB962FA58BAC64DD64A3 /* Pods-SignalUITests.app store release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SignalUITests.app store release.xcconfig"; path = "Pods/Target Support Files/Pods-SignalUITests/Pods-SignalUITests.app store release.xcconfig"; sourceTree = "<group>"; };
 		E434E65F6E6E989A106307BA /* Pods-SignalTests.profiling.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SignalTests.profiling.xcconfig"; path = "Pods/Target Support Files/Pods-SignalTests/Pods-SignalTests.profiling.xcconfig"; sourceTree = "<group>"; };
 		E44AD4E524E98F430035D7B8 /* PhotoCaptureDismiss.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureDismiss.swift; sourceTree = "<group>"; };
+		E710205E28F34B2B006D52F9 /* OWSUTType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OWSUTType.swift; sourceTree = "<group>"; };
+		E710206128F34E49006D52F9 /* OWSUTTypeTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OWSUTTypeTest.swift; sourceTree = "<group>"; };
 		E75DD3DF2810CDBD00E32C36 /* SubscriptionManagerTest.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SubscriptionManagerTest.swift; sourceTree = "<group>"; };
 		E7D0A2CE28D01F370072F642 /* NSItemProvider+OWS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSItemProvider+OWS.swift"; sourceTree = "<group>"; };
 		E7D0A2D428D144490072F642 /* OWSProgressReporting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OWSProgressReporting.swift; sourceTree = "<group>"; };
@@ -6802,6 +6806,14 @@
 			path = "Experience Upgrades";
 			sourceTree = "<group>";
 		};
+		E710206028F34E26006D52F9 /* Attachments */ = {
+			isa = PBXGroup;
+			children = (
+				E710206128F34E49006D52F9 /* OWSUTTypeTest.swift */,
+			);
+			path = Attachments;
+			sourceTree = "<group>";
+		};
 		E75DD3DC2810CD3500E32C36 /* subscriptions */ = {
 			isa = PBXGroup;
 			children = (
@@ -6980,6 +6992,7 @@
 		F942621C289B1B5500460798 /* Messages */ = {
 			isa = PBXGroup;
 			children = (
+				E710206028F34E26006D52F9 /* Attachments */,
 				F942621F289B1B5500460798 /* Interactions */,
 				F988DC11289DC8DE003B4B82 /* Reactions */,
 				F9426222289B1B5500460798 /* Stickers */,
@@ -7475,6 +7488,7 @@
 				F9C5C98E289453B100548EEE /* TSAttachmentStream+SDS.swift */,
 				F9C5C991289453B100548EEE /* TSAttachmentStream.h */,
 				F9C5C989289453B100548EEE /* TSAttachmentStream.m */,
+				E710205E28F34B2B006D52F9 /* OWSUTType.swift */,
 			);
 			path = Attachments;
 			sourceTree = "<group>";
@@ -10503,6 +10517,7 @@
 				F9C5CE52289453B400548EEE /* AppReadiness.swift in Sources */,
 				F9C5CE48289453B400548EEE /* AppVersion.m in Sources */,
 				F9C5CE0A289453B400548EEE /* Array+SSK.swift in Sources */,
+				E710205F28F34B2B006D52F9 /* OWSUTType.swift in Sources */,
 				F9C5CDF7289453B400548EEE /* Atomics.swift in Sources */,
 				F9C5CD16289453B300548EEE /* AttachmentFinder.swift in Sources */,
 				F9C5CE34289453B400548EEE /* AudioWaveform.swift in Sources */,
@@ -11078,6 +11093,7 @@
 				F97217FE28DCBC5100113D9F /* GRDBSchemaMigratorTest.swift in Sources */,
 				F9426251289B1B5500460798 /* GroupModelsTest.swift in Sources */,
 				F9426245289B1B5500460798 /* HTMLMetadataTests.swift in Sources */,
+				E710206328F34F64006D52F9 /* OWSUTTypeTest.swift in Sources */,
 				F942624D289B1B5500460798 /* InteractionFinderTest.swift in Sources */,
 				F942625E289B1B5500460798 /* JobQueueTest.swift in Sources */,
 				F9426257289B1B5500460798 /* KeyBackupServiceTests.swift in Sources */,
