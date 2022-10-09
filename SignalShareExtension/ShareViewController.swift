@@ -521,10 +521,12 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
                 throw OWSAssertionError("no input item")
             }
 
-            let promiseTuples = self.attachmentPromises(for: item)
-            let progressReporters = promiseTuples.map { $0.progress }
-            self.configureProgressPolling(progressReporters)
-            return Promise.when(fulfilled: promiseTuples.map { $0.attachment })
+            let attachmentTuples = self.attachmentPromises(for: item)
+            let progressReporters = attachmentTuples.map { $0.progress }
+            let attachmentPromises = attachmentTuples.map { $0.attachment }
+
+            self.configureProgressReporting(progressReporters)
+            return Promise.when(fulfilled: attachmentPromises)
 
         }.done { [weak self] (attachments: [SignalAttachment]) in
             guard let self = self else { throw PromiseError.cancelled }
@@ -599,7 +601,7 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
         return attachmentsToSend.map { $0.getPreferredSharingAttachmentPayload() }
     }
 
-    private func configureProgressPolling(_ reporters: [Progress]) {
+    private func configureProgressReporting(_ reporters: [Progress]) {
         guard reporters.count > 0 else { return }
 
         DispatchQueue.main.async {
@@ -643,7 +645,11 @@ extension NSItemProvider {
             .first(where: { hasItem(of: $0) })
             .map { attachmentPayload(for: $0) }
 
-        return preferredPayloadPromise ?? (Progress.createCompletedChild(), Promise(error: OWSAssertionError("No matching types")))
+        return preferredPayloadPromise ?? {
+            let completedProgress = Progress.createCompletedChild()
+            let errorPromise = Promise<SignalAttachment>(error: OWSAssertionError("No supported items available"))
+            return (completedProgress, errorPromise)
+        }()
     }
 }
 

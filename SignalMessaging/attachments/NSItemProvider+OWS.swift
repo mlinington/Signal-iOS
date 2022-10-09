@@ -62,32 +62,30 @@ public extension NSItemProvider {
         }
     }
 
-    private func loadDataAndMap<T>(for type: ItemType, map: @escaping (Data) throws -> T) -> (progress: Progress, Promise<T>) {
-        let (loadProgress, dataPromise) = loadData(forTypeIdentifier: type.typeIdentifier)
-        let mappedDataPromise = dataPromise.map { try map($0) }
-        return (loadProgress, mappedDataPromise)
-    }
-
-    private func loadFileAndMap<T>(for type: ItemType, map: @escaping (URL) throws -> T) -> (progress: Progress, Promise<T>) {
-        let (loadProgress, filePromise) = loadFile(forTypeIdentifier: type.typeIdentifier)
-        let mappedFilePromise = filePromise.map { try map($0) }
-        return (loadProgress, mappedFilePromise)
-    }
-
     private func loadAttachmentDataSource(for type: ItemType) -> (progress: Progress, Promise<DataSource>) {
         switch type {
-        case .text, .webUrl:
-            return loadDataAndMap(for: type) { data in
-                let text = String(decoding: data, as: UTF8.self)
-                return DataSourceValue.dataSource(withOversizeText: text)
+        case .text:
+            let (loadProgress, stringPromise) = loadString(forTypeIdentifier: type.typeIdentifier)
+            let dataSourcePromise = stringPromise.map {
+                DataSourceValue.dataSource(withOversizeText: $0)
             }
+            return (loadProgress, dataSourcePromise)
+
+        case .webUrl:
+            let (loadProgress, urlPromise) = loadURL(forTypeIdentifier: type.typeIdentifier)
+            let dataSourcePromise = urlPromise.map {
+                DataSourceValue.dataSource(withOversizeText: $0.absoluteString)
+            }
+            return (loadProgress, dataSourcePromise)
 
         case .image, .movie, .contact, .anyItem:
-            return loadFileAndMap(for: type) { itemUrl in
-                let dataSource = try DataSourcePath.dataSource(with: itemUrl, shouldDeleteOnDeallocation: false)
-                dataSource.sourceFilename = itemUrl.lastPathComponent
+            let (loadProgress, filePromise) = loadFile(forTypeIdentifier: type.typeIdentifier)
+            let dataSourcePromise = filePromise.map { fileURL in
+                let dataSource = try DataSourcePath.dataSource(with: fileURL, shouldDeleteOnDeallocation: false)
+                dataSource.sourceFilename = fileURL.lastPathComponent
                 return dataSource
             }
+            return (loadProgress, dataSourcePromise)
         }
     }
 
@@ -114,7 +112,6 @@ public extension NSItemProvider {
                let dataUrl = dataSourcePath.dataUrl {
                 return MIMETypeUtil.utiType(forFileExtension: dataUrl.pathExtension) ?? OWSUTType.data.identifier
             } else {
-                owsAssertDebug(type != .webUrl)
                 return type.typeIdentifier
             }
         }()

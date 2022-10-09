@@ -53,6 +53,21 @@ extension NSItemProvider {
             }
         }
         return (loadProgress, Promise(future: loadFuture))
+    }
 
+    func loadURL(forTypeIdentifier typeIdentifier: String) -> (Progress, Promise<URL>) {
+        let (loadProgress, dataPromise) = loadData(forTypeIdentifier: typeIdentifier)
+        let urlPromise = dataPromise.map {
+            try NSURL.object(withItemProviderData: $0, typeIdentifier: typeIdentifier) as URL
+        }
+        return (loadProgress, urlPromise)
+    }
+
+    func loadString(forTypeIdentifier typeIdentifier: String) -> (Progress, Promise<String>) {
+        let (loadProgress, dataPromise) = loadData(forTypeIdentifier: typeIdentifier)
+        let stringPromise = dataPromise.map {
+            try NSString.object(withItemProviderData: $0, typeIdentifier: typeIdentifier) as String
+        }
+        return (loadProgress, stringPromise)
     }
 }
