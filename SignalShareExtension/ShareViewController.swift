@@ -516,18 +516,16 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
         // finished building them.
         if selectedThread == nil { showPrimaryViewController(conversationPicker) }
 
-        firstly(on: .sharedUserInitiated) { () -> Promise<[NSItemProvider.AttachmentPayload]> in
+        firstly(on: .sharedUserInitiated) { () -> Promise<[SignalAttachment]> in
             // The NSExtensionActivationRule predicate informs iOS that we expect exactly one NSExtensionItem. We can ignore everything else.
-            if let item = self.extensionContext?.inputItems.first as? NSExtensionItem {
-                return self.attachmentPayloads(for: item)
-            } else {
+            guard let item = self.extensionContext?.inputItems.first as? NSExtensionItem else {
                 throw OWSAssertionError("no input item")
             }
-        }.then(on: .sharedUserInitiated) { (loadedItems: [NSItemProvider.AttachmentPayload]) -> Promise<[SignalAttachment]> in
-            let attachmentPromiseTuples = loadedItems.map { $0.loadAsSignalAttachment() }
-            let progressReporters = attachmentPromiseTuples.compactMap { $0.progress }
+
+            let promiseTuples = self.attachmentPromises(for: item)
+            let progressReporters = promiseTuples.map { $0.progress }
             self.configureProgressPolling(progressReporters)
-            return Promise.when(fulfilled: attachmentPromiseTuples.map { $0.promise })
+            return Promise.when(fulfilled: promiseTuples.map { $0.attachment })
 
         }.done { [weak self] (attachments: [SignalAttachment]) in
             guard let self = self else { throw PromiseError.cancelled }
@@ -584,7 +582,7 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
         Logger.info("showing screen lock")
     }
 
-    private func attachmentPayloads(for inputItem: NSExtensionItem) -> Promise<[NSItemProvider.AttachmentPayload]> {
+    private func attachmentPromises(for inputItem: NSExtensionItem) -> [(progress: Progress, attachment: Promise<SignalAttachment>)] {
         let availableAttachments = inputItem.attachments ?? []
 
         // Prefer a URL if available. If there's an image item and a URL item,
@@ -592,7 +590,7 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
         // App Store the image would be the app icon and the URL is the link
         // to the application.
         if let urlItem = availableAttachments.first(where: { $0.isExclusivelyUrlItem }) {
-            return urlItem.attachmentPayload(for: .webUrl).map { [$0] }
+            return [urlItem.attachmentPayload(for: .webUrl)]
         }
 
         // We only allow sharing 1 item, unless they are visual media items. And if they are
@@ -601,28 +599,22 @@ public class ShareViewController: UIViewController, ShareViewDelegate, SAEFailed
         let visualAttachments = availableAttachments.filter { $0.isVisualMediaItem }
         let attachmentsToSend = visualAttachments.count > 0 ? visualAttachments : availableAttachments
 
-        if attachmentsToSend.count > 0 {
-            return Promise.when(fulfilled: attachmentsToSend.map {
-                $0.getPreferredSharingAttachmentPayload()
-            })
-        } else {
-            return Promise(error: OWSAssertionError("No supported attachments"))
-        }
+        return attachmentsToSend.map { $0.getPreferredSharingAttachmentPayload() }
     }
 
-    private func configureProgressPolling(_ reporters: [OWSProgressReporting]) {
+    private func configureProgressPolling(_ reporters: [Progress]) {
         guard reporters.count > 0 else { return }
-
-        DispatchQueue.main.async {
-            let progressPoller = ProgressPoller(timeInterval: 0.1) {
-                let fractionalSum: Float = reporters.reduce(0) { $0 + $1.progress }
-                return fractionalSum / Float(reporters.count)
-            }
-
-            self.progressPoller = progressPoller
-            progressPoller.startPolling()
-            self.loadViewController.progress = progressPoller.progress
-        }
+        // TODO
+//        DispatchQueue.main.async {
+//            let progressPoller = ProgressPoller(timeInterval: 0.1) {
+//                let fractionalSum: Float = reporters.reduce(0) { $0 + $1.progress }
+//                return fractionalSum / Float(reporters.count)
+//            }
+//
+//            self.progressPoller = progressPoller
+//            progressPoller.startPolling()
+//            self.loadViewController.progress = progressPoller.progress
+//        }
     }
 }
 
@@ -647,7 +639,7 @@ extension NSItemProvider {
         hasItem(of: .movie) || hasItem(of: .image)
     }
 
-    func getPreferredSharingAttachmentPayload() -> Promise<NSItemProvider.AttachmentPayload> {
+    func getPreferredSharingAttachmentPayload() -> (progress: Progress, attachment: Promise<SignalAttachment>) {
         // The share extension has always had an ordered preference for attachment variants.
         // More correct behavior might involve the extension sharing multiple representations of the same attachment
         // but for now, whatever turns up first in this ordered preference is the payload that gets sent.
@@ -659,7 +651,7 @@ extension NSItemProvider {
             .first(where: { hasItem(of: $0) })
             .map { attachmentPayload(for: $0) }
 
-        return preferredPayloadPromise ?? Promise(error: OWSAssertionError("No matching types"))
+        return preferredPayloadPromise ?? (Progress.createCompletedChild(), Promise(error: OWSAssertionError("No matching types")))
     }
 }
 

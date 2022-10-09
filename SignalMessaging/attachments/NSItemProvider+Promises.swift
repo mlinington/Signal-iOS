@@ -6,64 +6,53 @@ import Foundation
 
 extension NSItemProvider {
 
-    func loadFile(forTypeIdentifier typeIdentifier: String) -> Promise<URL> {
-        Promise { future in
-            loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, error in
-                switch (url, error) {
-                case (let url?, nil):
-                    // The fileURL that Foundation provides is only supposed to live as long
-                    // as this completion handler.
-                    do {
-                        let ownedPath = try SignalAttachment.copyToImportTempDir(url: url)
-                        future.resolve(ownedPath)
-                    } catch {
-                        future.reject(error)
-                    }
+    func loadFile(forTypeIdentifier typeIdentifier: String) -> (Progress, Promise<URL>) {
+        let copyProgress = Progress(totalUnitCount: 1)
 
-                case (_, let error?):
-                    future.reject(error)
-
-                case (nil, nil):
-                    future.reject(OWSAssertionError("Unknown error"))
+        let loadFuture = Future<URL>()
+        let loadProgress = loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, error in
+            switch (url, error) {
+            case (let url?, nil):
+                // The fileURL that Foundation provides is only supposed to live as long
+                // as this completion handler.
+                do {
+                    let ownedPath = try SignalAttachment.copyToImportTempDir(url: url)
+                    loadFuture.resolve(ownedPath)
+                } catch {
+                    loadFuture.reject(error)
                 }
+
+            case (_, let error?):
+                loadFuture.reject(error)
+
+            case (nil, nil):
+                loadFuture.reject(OWSAssertionError("Unknown error"))
+            }
+
+            copyProgress.completedUnitCount = 1
+        }
+
+        let totalProgress = Progress.discreteProgress(totalUnitCount: 10)
+        totalProgress.addChild(loadProgress, withPendingUnitCount: 9)
+        totalProgress.addChild(copyProgress, withPendingUnitCount: 1)
+        return (totalProgress, Promise(future: loadFuture))
+    }
+
+    func loadData(forTypeIdentifier typeIdentifier: String) -> (Progress, Promise<Data>) {
+        let loadFuture = Future<Data>()
+        let loadProgress = loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
+            switch (data, error) {
+            case (let data?, nil):
+                loadFuture.resolve(data)
+
+            case (_, let error?):
+                loadFuture.reject(error)
+
+            case (nil, nil):
+                loadFuture.reject(OWSAssertionError("Unknown error"))
             }
         }
-    }
+        return (loadProgress, Promise(future: loadFuture))
 
-    func loadData(forTypeIdentifier typeIdentifier: String) -> Promise<Data> {
-        Promise { future in
-            loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
-                switch (data, error) {
-                case (let data?, nil):
-                    future.resolve(data)
-
-                case (_, let error?):
-                    future.reject(error)
-
-                case (nil, nil):
-                    future.reject(OWSAssertionError("Unknown error"))
-                }
-            }
-        }
-    }
-
-    func loadText(forTypeIdentifier typeIdentifier: String) -> Promise<String> {
-        loadData(forTypeIdentifier: typeIdentifier).map { String(decoding: $0, as: UTF8.self) }
-    }
-
-    func loadUrl(forTypeIdentifier typeIdentifier: String) -> Promise<URL> {
-        loadText(forTypeIdentifier: typeIdentifier).map {
-            try URL(string: $0) ?? {
-                throw OWSAssertionError("Failed conversion from String to URL")
-            }()
-        }
-    }
-
-    func loadImage(forTypeIdentifier typeIdentifier: String) -> Promise<UIImage> {
-        loadData(forTypeIdentifier: typeIdentifier).map {
-            try UIImage(data: $0) ?? {
-                throw OWSAssertionError("Failed conversion from Data to UIImage")
-            }()
-        }
     }
 }

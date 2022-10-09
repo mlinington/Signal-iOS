@@ -17,14 +17,17 @@ public extension NSItemProvider {
         case text
         case anyItem
 
-        /// The type identifier used when checking item conformance on NSItemProvider
         fileprivate var typeIdentifier: String {
             switch self {
+            // These identifiers are checked directly
             case .movie:    return OWSUTType.movie.identifier
             case .image:    return OWSUTType.image.identifier
-            case .webUrl:   return OWSUTType.url.identifier
             case .contact:  return OWSUTType.contact.identifier
             case .text:     return OWSUTType.text.identifier
+
+            // These identifiers are also checked directly, but there's some additional
+            // conformance checks made in hasItem(of:) as well
+            case .webUrl:   return OWSUTType.url.identifier
             case .anyItem:  return OWSUTType.content.identifier
             }
         }
@@ -59,167 +62,114 @@ public extension NSItemProvider {
         }
     }
 
-    func attachmentPayload(for type: ItemType) -> Promise<AttachmentPayload> {
-        guard hasItem(of: type) else { return Promise(error: OWSAssertionError("")) }
+    private func loadDataAndMap<T>(for type: ItemType, map: @escaping (Data) throws -> T) -> (progress: Progress, Promise<T>) {
+        let (loadProgress, dataPromise) = loadData(forTypeIdentifier: type.typeIdentifier)
+        let mappedDataPromise = dataPromise.map { try map($0) }
+        return (loadProgress, mappedDataPromise)
+    }
 
+    private func loadFileAndMap<T>(for type: ItemType, map: @escaping (URL) throws -> T) -> (progress: Progress, Promise<T>) {
+        let (loadProgress, filePromise) = loadFile(forTypeIdentifier: type.typeIdentifier)
+        let mappedFilePromise = filePromise.map { try map($0) }
+        return (loadProgress, mappedFilePromise)
+    }
+
+    private func loadAttachmentDataSource(for type: ItemType) -> (progress: Progress, Promise<DataSource>) {
         switch type {
-        case .movie:
-            return loadFile(forTypeIdentifier: type.typeIdentifier).map { .fileUrl($0) }
-
-        case .image:
-            // When multiple image formats are available, kUTTypeImage will
-            // defer to jpeg when possible. On iPhone 12 Pro, when 'heic'
-            // and 'jpeg' are the available options, the 'jpeg' data breaks
-            // UIImage (and underlying) in some unclear way such that trying
-            // to perform any kind of transformation on the image (such as
-            // resizing) causes memory to balloon uncontrolled. Luckily,
-            // iOS 14 provides native UIImage support for heic and iPhone
-            // 12s can only be running iOS 14+, so we can request the heic
-            // format directly, which behaves correctly for all our needs.
-            // A radar has been opened with apple reporting this issue.
-            let desiredTypeIdentifier: String
-            if #available(iOS 14, *), registeredTypeIdentifiers.contains(OWSUTType.heic.identifier) {
-                desiredTypeIdentifier = OWSUTType.heic.identifier
-            } else {
-                desiredTypeIdentifier = type.typeIdentifier
+        case .text, .webUrl:
+            return loadDataAndMap(for: type) { data in
+                let text = String(decoding: data, as: UTF8.self)
+                return DataSourceValue.dataSource(withOversizeText: text)
             }
 
-            return firstly {
-                loadFile(forTypeIdentifier: desiredTypeIdentifier).map { .fileUrl($0) }
-            }.recover(on: .global()) { error -> Promise<AttachmentPayload> in
-                // If a URL wasn't available, fall back to an in-memory image
-                // One place this happens is when sharing from the screenshot app on iOS13
-                if (error as NSError).isMismatchedClassError {
-                    // Should the type identifier used here be the desiredTypeIdentifier from above? Leaving as-is for now.
-                    return self.loadImage(forTypeIdentifier: type.typeIdentifier).map { .inMemoryImage($0) }
-                } else {
-                    throw error
-                }
+        case .image, .movie, .contact, .anyItem:
+            return loadFileAndMap(for: type) { itemUrl in
+                let dataSource = try DataSourcePath.dataSource(with: itemUrl, shouldDeleteOnDeallocation: false)
+                dataSource.sourceFilename = itemUrl.lastPathComponent
+                return dataSource
             }
-        case .webUrl:
-            return loadUrl(forTypeIdentifier: type.typeIdentifier).map { .webUrl($0) }
-        case .contact:
-            return loadFile(forTypeIdentifier: type.typeIdentifier).map { .contact($0) }
-        case .text:
-            return loadText(forTypeIdentifier: type.typeIdentifier).map { .text($0) }
-        case .anyItem:
-            return loadFile(forTypeIdentifier: type.typeIdentifier).map { .fileUrl($0) }
         }
     }
-}
 
-extension NSItemProvider {
-
-    /// A representation  of an attachment that we own that has been retrieved from an NSItemProvider
-    /// If you have an AttachmentPayload, you either have the direct content, or a fileURL somewhere in
-    /// out container.
-    public enum AttachmentPayload {
-        case fileUrl(_ fileUrl: URL)
-        case contact(_ fileURL: URL)
-        case inMemoryImage(_ image: UIImage)
-        case webUrl(_ webUrl: URL)
-        case text(_ text: String)
-
-        var debugDescription: String {
-            switch self {
-            case .fileUrl:
-                return "fileUrl"
-            case .inMemoryImage:
-                return "inMemoryImage"
-            case .webUrl:
-                return "webUrl"
-            case .contact:
-                return "contact"
-            case .text:
-                return "text"
+    private func buildAttachment(for type: ItemType, using dataSource: DataSource) -> (progress: Progress, Promise<SignalAttachment>) {
+        // This replicates existing behavior, but there are a couple things that give me pause here:
+        // It seems weird that we're getting the UTI for a file-backed data source from the path extension and not from
+        // the URL resources.
+        //
+        // Here's an example of how I believe this will break:
+        // Say I try and share some binary, maybe a zipped folder or something, with the name "data.png". The ItemProvider
+        // tells us there's some binary file conforming to public.item and we proceed to import it into our container.
+        //
+        // Foundation understands this isn't an image and up until this point we understand it's not an image as well.
+        // In this case, the ItemType above should be `.anyItem`.
+        //
+        // Here, now all of a sudden we're going to use the pathExtension to infer a UTType that we already know. And we're
+        // going to infer this should be a PNG. The PNG type identifier will be passed into the SignalAttachment initializer and
+        // SignalAttachment will do a whole bunch of image validation on a file that we already know isn't an image.
+        //
+        // TODO: Reconsider how SignalAttachment treats the relationship between type-identifier, file extension, and URLResource
+        // reported by Foundation for file-backed data sources.
+        let outputUTI = {
+            if let dataSourcePath = dataSource as? DataSourcePath,
+               let dataUrl = dataSourcePath.dataUrl {
+                return MIMETypeUtil.utiType(forFileExtension: dataUrl.pathExtension) ?? OWSUTType.data.identifier
+            } else {
+                owsAssertDebug(type != .webUrl)
+                return type.typeIdentifier
             }
+        }()
+
+        switch type {
+        case .webUrl, .text:
+            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: outputUTI)
+            attachment.isConvertibleToTextMessage = true
+            return (Progress.createCompletedChild(), .value(attachment))
+
+        case .contact:
+            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: outputUTI)
+            attachment.isConvertibleToContactShare = true
+            return (Progress.createCompletedChild(), .value(attachment))
+
+        case .movie:
+            let attachmentPromise: Promise<SignalAttachment>
+            let attachmentProgress: Progress
+            if SignalAttachment.isVideoThatNeedsCompression(dataSource: dataSource, dataUTI: outputUTI) {
+                let (result, session) = SignalAttachment.compressVideoAsMp4(
+                    dataSource: dataSource,
+                    dataUTI: OWSUTType.movie.identifier)
+
+                attachmentPromise = result
+                attachmentProgress = session?.createProgressPoller() ?? Progress.createCompletedChild()
+            } else {
+                attachmentPromise = Promise.value(SignalAttachment.attachment(dataSource: dataSource, dataUTI: outputUTI))
+                attachmentProgress = Progress.createCompletedChild()
+            }
+            return (attachmentProgress, attachmentPromise)
+
+        case .image, .anyItem:
+            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: outputUTI)
+            return (Progress.createCompletedChild(), .value(attachment))
+        }
+    }
+
+    func attachmentPayload(for type: ItemType) -> (progress: Progress, Promise<SignalAttachment>) {
+        guard hasItem(of: type) else { return (Progress.init(), Promise(error: OWSAssertionError(""))) }
+
+        // 75 progress units are allocated to loading of the file/data
+        // 25 progress units are allocated to any conversion necessary to get it into a SignalAttachment
+        // There's probably a better way to balance this, but this is a fine approximation.
+        let totalProgress = Progress.discreteProgress(totalUnitCount: 100)
+
+        let (loadProgress, dataSourcePromise) = loadAttachmentDataSource(for: type)
+        totalProgress.addChild(loadProgress, withPendingUnitCount: 75)
+
+        let attachmentPromise = dataSourcePromise.then { dataSource in
+            let (attachmentProgress, attachmentPromise) = self.buildAttachment(for: type, using: dataSource)
+            totalProgress.addChild(attachmentProgress, withPendingUnitCount: 25)
+            return attachmentPromise
         }
 
-        private func createDataSource() throws -> DataSource? {
-            switch self {
-            case .webUrl(let webUrl):
-                return DataSourceValue.dataSource(withOversizeText: webUrl.absoluteString)
-            case .text(let text):
-                return DataSourceValue.dataSource(withOversizeText: text)
-            case .inMemoryImage(let image):
-                if let pngData = image.pngData() {
-                    return DataSourceValue.dataSource(with: pngData, fileExtension: "png")
-                } else {
-                    throw OWSAssertionError("pngData was unexpectedly nil")
-                }
-            case .fileUrl(let itemUrl), .contact(let itemUrl):
-                do {
-                    let dataSource = try DataSourcePath.dataSource(with: itemUrl, shouldDeleteOnDeallocation: false)
-                    dataSource.sourceFilename = itemUrl.lastPathComponent
-                    return dataSource
-                } catch {
-                    throw OWSAssertionError("Attachment URL was not a file URL")
-                }
-            }
-        }
-
-        /// Creates an attachment with from a generic "loaded item". The data source
-        /// backing the returned attachment must "own" the data it provides - i.e.,
-        /// it must not refer to data/files that other components refer to.
-
-        /// Returns a Promise for the attachment and an optional progress reporter. If the progress reporter
-        /// is non-nil, this can be used to estimate how close the SignalAttachment promise is to completion
-        // Would it be useful to build progress reporting in to Promises? Maybe! For now, they're
-        // passed around separately.
-        public func loadAsSignalAttachment() -> (promise: Promise<SignalAttachment>, progress: OWSProgressReporting?) {
-            let dataSource: DataSource?
-            do {
-                dataSource = try createDataSource()
-            } catch {
-                return (Promise(error: error), nil)
-            }
-
-            switch self {
-            case .webUrl:
-                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: OWSUTType.text.identifier)
-                attachment.isConvertibleToTextMessage = true
-                return (.value(attachment), nil)
-
-            case .contact:
-                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: OWSUTType.contact.identifier)
-                attachment.isConvertibleToContactShare = true
-                return (.value(attachment), nil)
-
-            case .text:
-                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: OWSUTType.text.identifier)
-                attachment.isConvertibleToTextMessage = true
-                return (.value(attachment), nil)
-
-            case .inMemoryImage:
-                let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: OWSUTType.png.identifier)
-                return (.value(attachment), nil)
-
-            case .fileUrl(let itemUrl):
-                let utiType = MIMETypeUtil.utiType(forFileExtension: itemUrl.pathExtension) ?? OWSUTType.data.identifier
-                guard let dataSource = dataSource else {
-                    return (Promise(error: OWSAssertionError("Attachment URL was not a file URL")), nil)
-                }
-
-                if SignalAttachment.isVideoThatNeedsCompression(dataSource: dataSource, dataUTI: utiType) {
-                    // This can happen, e.g. when sharing a quicktime-video from iCloud drive.
-                    return SignalAttachment.compressVideoAsMp4(dataSource: dataSource, dataUTI: utiType)
-
-                } else {
-                    let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: utiType)
-
-                    // If we already own the attachment's data - i.e. we have copied it
-                    // from the URL originally passed in, and therefore no one else can
-                    // be referencing it - we can return the attachment as-is...
-                    if attachment.dataUrl != itemUrl {
-                        return (Promise.value(attachment), nil)
-                    } else {
-                        // ...otherwise, we should clone the attachment to ensure we aren't
-                        // touching data someone else might be referencing.
-                        return (attachment.clonePromise(), nil)
-                    }
-                }
-            }
-        }
+        return (totalProgress, attachmentPromise)
     }
 }
 
@@ -243,6 +193,7 @@ private enum OWSUTType {
     case heic
     case content
     case package
+    case item
 
     var identifier: String {
         if #available(iOS 14, *) {
@@ -262,6 +213,7 @@ private enum OWSUTType {
             case .heic:     return UTType.heic.identifier
             case .content:  return UTType.content.identifier
             case .package:  return UTType.package.identifier
+            case .item:     return UTType.item.identifier
             }
         } else {
             switch self {
@@ -280,18 +232,13 @@ private enum OWSUTType {
             case .heic:     return "public.heic"
             case .content:  return kUTTypeContent as String
             case .package:  return kUTTypePackage as String
+            case .item:  return kUTTypeItem as String
             }
         }
     }
 }
 
 // MARK: - Private helpers
-
-fileprivate extension NSError {
-    var isMismatchedClassError: Bool {
-        hasDomain(NSItemProvider.errorDomain, code: NSItemProvider.ErrorCode.unexpectedValueClassError.rawValue)
-    }
-}
 
 fileprivate extension SignalAttachment {
     func clonePromise() -> Promise<SignalAttachment> {
@@ -300,5 +247,36 @@ fileprivate extension SignalAttachment {
         } catch {
             return Promise(error: error)
         }
+    }
+}
+
+fileprivate extension URL {
+    func fetchTypeIdentifier() -> String {
+        let key: URLResourceKey
+        if #available(iOS 14, *) {
+            key = .contentTypeKey
+        } else {
+            key = .typeIdentifierKey
+        }
+
+        let fetchedValues: URLResourceValues?
+        do {
+            fetchedValues = try resourceValues(forKeys: [key])
+        } catch {
+            owsFailDebug("Failed to fetch resource values \(error)")
+            fetchedValues = nil
+        }
+
+        let fetchedIdentifier: String?
+        if #available(iOS 14, *) {
+            fetchedIdentifier = fetchedValues?.contentType?.identifier
+        } else {
+            fetchedIdentifier = fetchedValues?.typeIdentifier
+        }
+
+        return fetchedIdentifier ?? {
+            owsFailDebug("Failed to fetch type identifier")
+            return OWSUTType.item.identifier
+        }()
     }
 }

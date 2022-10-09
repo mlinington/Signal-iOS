@@ -180,7 +180,7 @@ public class GRDBDatabaseStorageAdapter: NSObject {
 
     // MARK: - DatabasePathObservation
 
-    var databasePathKVOContext = "DatabasePathKVOContext"
+    private static var databasePathKVOContext = "DatabasePathKVOContext"
     var unregisterKVO: (() -> Void)?
 
     func setupDatabasePathKVO() {
@@ -191,10 +191,10 @@ public class GRDBDatabaseStorageAdapter: NSObject {
                 self,
                 forKeyPath: DirectoryMode.primaryFolderNameKey,
                 options: [],
-                context: &databasePathKVOContext
+                context: &Self.databasePathKVOContext
             )
             unregisterKVO = {
-                appUserDefaults.removeObserver(self, forKeyPath: DirectoryMode.primaryFolderNameKey, context: &self.databasePathKVOContext)
+                appUserDefaults.removeObserver(self, forKeyPath: DirectoryMode.primaryFolderNameKey, context: &Self.databasePathKVOContext)
                 self.unregisterKVO = nil
             }
         }
@@ -202,7 +202,7 @@ public class GRDBDatabaseStorageAdapter: NSObject {
 
     public override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
 
-        if keyPath == DirectoryMode.primaryFolderNameKey, context == &databasePathKVOContext {
+        if keyPath == DirectoryMode.primaryFolderNameKey, context == &Self.databasePathKVOContext {
             checkForDatabasePathChange()
         } else {
             super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)

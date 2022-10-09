@@ -100,13 +100,10 @@ extension OutgoingMessagePreparer {
                 truncatedText = messageBody.text.truncated(toByteCount: kOversizeTextMessageSizeThreshold)
                 bodyRanges = messageBody.ranges
 
-                if let dataSource = DataSourceValue.dataSource(withOversizeText: messageBody.text) {
-                    let attachment = SignalAttachment.attachment(dataSource: dataSource,
-                                                                 dataUTI: kOversizeTextAttachmentUTI)
-                    attachments.append(attachment)
-                } else {
-                    owsFailDebug("dataSource was unexpectedly nil")
-                }
+                let dataSource = DataSourceValue.dataSource(withOversizeText: messageBody.text)
+                let attachment = SignalAttachment.attachment(dataSource: dataSource,
+                                                             dataUTI: kOversizeTextAttachmentUTI)
+                attachments.append(attachment)
             } else {
                 truncatedText = messageBody.text
                 bodyRanges = messageBody.ranges

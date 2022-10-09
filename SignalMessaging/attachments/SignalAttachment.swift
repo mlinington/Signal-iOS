@@ -1299,13 +1299,8 @@ public class SignalAttachment: NSObject {
 
     @objc
     public class func isVideoThatNeedsCompression(dataSource: DataSource, dataUTI: String) -> Bool {
-        guard videoUTISet.contains(dataUTI) else {
-            // not a video
-            return false
-        }
-
         // Today we re-encode all videos for the most consistent experience.
-        return true
+        return videoUTISet.contains(dataUTI)
     }
 
     private class func isValidOutputVideo(dataSource: DataSource?, dataUTI: String) -> Bool {
@@ -1346,7 +1341,7 @@ public class SignalAttachment: NSObject {
     //
     // NOTE: The attachment returned by this method may not be valid.
     //       Check the attachment's error property.
-    private class func oversizeTextAttachment(text: String?) -> SignalAttachment {
+    private class func oversizeTextAttachment(text: String) -> SignalAttachment {
         let dataSource = DataSourceValue.dataSource(withOversizeText: text)
         return newAttachment(dataSource: dataSource,
                              dataUTI: kOversizeTextAttachmentUTI,

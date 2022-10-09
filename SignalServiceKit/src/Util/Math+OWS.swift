@@ -64,75 +64,30 @@ public extension CGFloat {
 
 // MARK: -
 
-public extension Double {
-    func clamp(_ minValue: Double, _ maxValue: Double) -> Double {
+public extension Comparable {
+    func clamp(_ minValue: Self, _ maxValue: Self) -> Self {
+        owsAssertDebug(minValue <= maxValue)
+
         return max(minValue, min(maxValue, self))
     }
+}
 
-    func clamp01() -> Double {
-        return clamp(0, 1)
-    }
-
-    // Linear interpolation
-    func lerp(_ minValue: Double, _ maxValue: Double) -> Double {
-        return (minValue * (1 - self)) + (maxValue * self)
+public extension FloatingPoint {
+    func clamp01() -> Self {
+        clamp(0, 1)
     }
 
     // Inverse linear interpolation
-    func inverseLerp(_ minValue: Double, _ maxValue: Double, shouldClamp: Bool = false) -> Double {
+    func inverseLerp(_ minValue: Self, _ maxValue: Self, shouldClamp: Bool = false) -> Self {
         let value = (self - minValue) / (maxValue - minValue)
         return (shouldClamp ? value.clamp01() : value)
     }
 }
 
-// MARK: -
-
-public extension Float {
-    func clamp(_ minValue: Float, _ maxValue: Float) -> Float {
-        return max(minValue, min(maxValue, self))
-    }
-
-    func clamp01() -> Float {
-        return clamp(0, 1)
-    }
-
+public extension Numeric {
     // Linear interpolation
-    func lerp(_ minValue: Float, _ maxValue: Float) -> Float {
-        return (minValue * (1 - self)) + (maxValue * self)
-    }
-
-    // Inverse linear interpolation
-    func inverseLerp(_ minValue: Float, _ maxValue: Float, shouldClamp: Bool = false) -> Float {
-        let value = (self - minValue) / (maxValue - minValue)
-        return (shouldClamp ? value.clamp01() : value)
-    }
-}
-
-// MARK: -
-
-public extension Int {
-    func clamp(_ minValue: Int, _ maxValue: Int) -> Int {
-        assert(minValue <= maxValue)
-
-        return Swift.max(minValue, Swift.min(maxValue, self))
-    }
-}
-
-// MARK: -
-
-public extension UInt {
-    func clamp(_ minValue: UInt, _ maxValue: UInt) -> UInt {
-        assert(minValue <= maxValue)
-
-        return Swift.max(minValue, Swift.min(maxValue, self))
-    }
-}
-
-// MARK: -
-
-public extension UInt64 {
-    var asNSNumber: NSNumber {
-        NSNumber(value: self)
+    func lerp(_ minValue: Self, _ maxValue: Self) -> Self {
+        (minValue * (1 - self)) + (maxValue * self)
     }
 }
 

@@ -80,13 +80,10 @@ NS_ASSUME_NONNULL_BEGIN
     return [[self alloc] initWithData:data fileExtension:fileExtension];
 }
 
-+ (_Nullable id<DataSource>)dataSourceWithOversizeText:(NSString *_Nullable)text
++ (id<DataSource>)dataSourceWithOversizeText:(NSString *)text
 {
-    if (!text) {
-        return nil;
-    }
-
-    NSData *data = [text.filterStringForDisplay dataUsingEncoding:NSUTF8StringEncoding];
+    NSString *filteredString = text.filterStringForDisplay ?: @"";
+    NSData *data = [filteredString dataUsingEncoding:NSUTF8StringEncoding];
     return [[self alloc] initWithData:data fileExtension:kOversizeTextAttachmentFileExtension];
 }
 
