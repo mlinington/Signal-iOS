@@ -14,7 +14,9 @@ extension DeviceTransferService {
     private static let certificateHashKey = "certificateHash"
     private static let transferModeKey = "transferMode"
 
-    private enum Constants {
+    enum Constants {
+        // NOTE: This scheme is not registered with LaunchServices.
+        static let localTransferScheme = "sgnl"
         static let transferHost = "transfer"
     }
 
@@ -24,7 +26,7 @@ extension DeviceTransferService {
         }
 
         var components = URLComponents()
-        components.scheme = UrlOpener.Constants.sgnlPrefix
+        components.scheme = Constants.localTransferScheme
         components.host = Constants.transferHost
 
         guard let base64CertificateHash = try identity.computeCertificateHash().base64EncodedString().encodeURIComponent else {

@@ -10,8 +10,6 @@ class SignalProxyTest: XCTestCase {
     func testIsValidProxyLink() throws {
         let validHrefs: [String] = [
             "https://signal.tube/#example.com",
-            "sgnl://signal.tube/#example.com",
-            "sgnl://signal.tube/extrapath?extra=query#example.com",
             "HTTPS://SIGNAL.TUBE/#EXAMPLE.COM"
         ]
         for href in validHrefs {
@@ -20,6 +18,9 @@ class SignalProxyTest: XCTestCase {
         }
 
         let invalidHrefs: [String] = [
+            // Deprecated Schemes
+            "sgnl://signal.tube/#example.com",
+            "sgnl://signal.tube/extrapath?extra=query#example.com",
             // Wrong protocol
             "http://signal.tube/#example.com",
             // Wrong host

@@ -13,7 +13,6 @@ private enum OpenableUrl {
     case stickerPack(StickerPackInfo)
     case groupInvite(URL)
     case signalProxy(URL)
-    case linkDevice(DeviceProvisioningURL)
     case completeIDEALDonation(Stripe.IDEALCallbackType)
     case callLink(CallLink)
 }
@@ -28,12 +27,6 @@ class UrlOpener {
     ) {
         self.databaseStorage = databaseStorage
         self.tsAccountManager = tsAccountManager
-    }
-
-    // MARK: - Constants
-
-    enum Constants {
-        static let sgnlPrefix = "sgnl"
     }
 
     // MARK: - Parsing URLs
@@ -59,17 +52,11 @@ class UrlOpener {
         if StickerPackInfo.isStickerPackShare(url), let stickerPackInfo = StickerPackInfo.parseStickerPackShare(url) {
             return .stickerPack(stickerPackInfo)
         }
-        if let stickerPackInfo = parseSgnlAddStickersUrl(url) {
-            return .stickerPack(stickerPackInfo)
-        }
         if GroupManager.isPossibleGroupInviteLink(url) {
             return .groupInvite(url)
         }
         if SignalProxy.isValidProxyLink(url) {
             return .signalProxy(url)
-        }
-        if let deviceProvisiongUrl = parseSgnlLinkDeviceUrl(url) {
-            return .linkDevice(deviceProvisiongUrl)
         }
         if let donationType = Stripe.parseStripeIDEALCallback(url) {
             return .completeIDEALDonation(donationType)
@@ -79,39 +66,6 @@ class UrlOpener {
         }
         owsFailDebug("Couldn't parse URL")
         return nil
-    }
-
-    private static func parseSgnlAddStickersUrl(_ url: URL) -> StickerPackInfo? {
-        guard
-            let components = URLComponents(string: url.absoluteString),
-            components.scheme == Constants.sgnlPrefix,
-            components.host?.hasPrefix("addstickers") == true,
-            let queryItems = components.queryItems
-        else {
-            return nil
-        }
-        var packIdHex: String?
-        var packKeyHex: String?
-        for queryItem in queryItems {
-            switch queryItem.name {
-            case "pack_id":
-                owsAssertDebug(packIdHex == nil)
-                packIdHex = queryItem.value
-            case "pack_key":
-                owsAssertDebug(packKeyHex == nil)
-                packKeyHex = queryItem.value
-            default:
-                Logger.warn("Unknown query item in sticker pack url")
-            }
-        }
-        return StickerPackInfo.parse(packIdHex: packIdHex, packKeyHex: packKeyHex)
-    }
-
-    private static func parseSgnlLinkDeviceUrl(_ url: URL) -> DeviceProvisioningURL? {
-        guard url.scheme == Constants.sgnlPrefix, url.host?.hasPrefix(DeviceProvisioningURL.Constants.linkDeviceHost) == true else {
-            return nil
-        }
-        return DeviceProvisioningURL(urlString: url.absoluteString)
     }
 
     // MARK: - Opening URLs
@@ -135,7 +89,7 @@ class UrlOpener {
     private func shouldDismiss(for url: OpenableUrl) -> Bool {
         switch url {
         case .completeIDEALDonation: return false
-        case .groupInvite, .linkDevice, .phoneNumberLink, .signalProxy, .stickerPack, .usernameLink, .callLink: return true
+        case .groupInvite, .phoneNumberLink, .signalProxy, .stickerPack, .usernameLink, .callLink: return true
         }
     }
 
@@ -167,24 +121,6 @@ class UrlOpener {
 
         case .signalProxy(let url):
             rootViewController.present(ProxyLinkSheetViewController(url: url)!, animated: true)
-
-        case .linkDevice(let deviceProvisioningURL):
-            guard tsAccountManager.registrationStateWithMaybeSneakyTransaction.isRegisteredPrimaryDevice else {
-                return owsFailDebug("Ignoring URL; not primary device.")
-            }
-            let linkedDevicesViewController = LinkedDevicesTableViewController()
-            let linkDeviceViewController = LinkDeviceViewController()
-            linkDeviceViewController.delegate = linkedDevicesViewController
-
-            let navigationController = AppSettingsViewController.inModalNavigationController()
-            var viewControllers = navigationController.viewControllers
-            viewControllers.append(linkedDevicesViewController)
-            viewControllers.append(linkDeviceViewController)
-            navigationController.setViewControllers(viewControllers, animated: false)
-
-            rootViewController.presentFormSheet(navigationController, animated: false) {
-                linkDeviceViewController.confirmProvisioningWithUrl(deviceProvisioningURL)
-            }
 
         case .completeIDEALDonation(let donationType):
             DonationViewsUtil.attemptToContinueActiveIDEALDonation(

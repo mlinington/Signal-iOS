@@ -12,11 +12,10 @@ public extension Usernames {
     /// link encodes "entropy data" and a "handle UUID".
     ///
     /// These links look like
-    /// `{https,sgnl}://signal.me/#eu/{base64url-encoded data}`.
+    /// `https://signal.me/#eu/{base64url-encoded data}`.
     struct UsernameLink: Equatable {
         private enum LinkUrlComponents {
             static let httpsScheme = "https"
-            static let sgnlScheme = "sgnl"
             static let host = "signal.me"
             static let path = "/"
             static let fragmentPrefix = "eu/"
@@ -57,12 +56,8 @@ public extension Usernames {
 
             let fragmentPrefix = LinkUrlComponents.fragmentPrefix
 
-            guard
-                (
-                    components.scheme == LinkUrlComponents.httpsScheme
-                    || components.scheme == LinkUrlComponents.sgnlScheme
-                ),
-                components.host == LinkUrlComponents.host,
+            guard components.scheme == LinkUrlComponents.httpsScheme,
+                  components.host == LinkUrlComponents.host,
                 (
                     components.path == LinkUrlComponents.path
                     || components.path.isEmpty

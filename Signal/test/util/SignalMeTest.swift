@@ -12,7 +12,6 @@ class SignalMeTest: XCTestCase {
             "https://signal.me/#p/+14085550123",
             "hTTPs://sigNAL.mE/#P/+14085550123",
             "https://signal.me/#p/+9",
-            "sgnl://signal.me/#p/+14085550123"
         ]
         for string in validStrings {
             let url = try XCTUnwrap(URL(string: string))
@@ -20,6 +19,8 @@ class SignalMeTest: XCTestCase {
         }
 
         let invalidStrings = [
+            // Deprecated protocol
+            "sgnl://signal.me/#p/+14085550123",
             // Invalid protocols
             "http://signal.me/#p/+14085550123",
             "signal://signal.me/#p/+14085550123",

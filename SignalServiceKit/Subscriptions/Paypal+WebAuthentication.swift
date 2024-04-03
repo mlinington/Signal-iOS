@@ -76,11 +76,11 @@ extension Paypal {
     private static let redirectUrlHost: String = "signaldonations.org"
 
     /// A path component used in PayPal callback URLs that will tell the server
-    /// to redirect us to the `sgnl://` custom scheme with all path and query
+    /// to redirect us to the `sgnlpay://` custom scheme with all path and query
     /// components after `/redirect`.
     ///
     /// For example, the URL `https://signaldonations.org/redirect/whatever?foo=bar`
-    /// will be redirected by the server to `sgnl://whatever?foo=bar`.
+    /// will be redirected by the server to `sgnlpay://whatever?foo=bar`.
     private static let paymentRedirectPathComponent: String = "/redirect/\(authSessionHost)"
 
     /// A path component used in PayPal callback URLs to indicate that the user
@@ -130,7 +130,7 @@ extension Paypal {
     /// are not invoked (so we are the only ones to capture the callback).
     ///
     /// [0]: https://developer.apple.com/documentation/authenticationservices/aswebauthenticationsession
-    private static let authSessionScheme: String = "sgnl"
+    private static let authSessionScheme: String = "sgnlpay"
 
     /// The host for the URL we expect to be redirected to by our `https`
     /// PayPal callback URLs. See ``paymentRedirectPathComponent``.

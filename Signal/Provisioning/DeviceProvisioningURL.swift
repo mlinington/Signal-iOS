@@ -13,13 +13,17 @@ class DeviceProvisioningURL {
     let publicKey: PublicKey
 
     enum Constants {
+        // NOTE: This scheme is not registered with LaunchServices.
+        static let localLinkScheme = "sgnl"
         static let linkDeviceHost = "linkdevice"
     }
 
     init?(urlString: String) {
-        guard let queryItems = URLComponents(string: urlString)?.queryItems else {
-            return nil
-        }
+        guard let urlComponents = URLComponents(string: urlString) else { return nil }
+        // DeviceProvisioningURLTest does not assume this holds true:
+        // > guard urlComponents.scheme == Constants.localLinkScheme else { return nil }
+        // > guard urlComponents.host?.hasPrefix(Constants.linkDeviceHost) == true else { return nil }
+        let queryItems = urlComponents.queryItems ?? []
 
         var ephemeralDeviceId: String?
         var publicKey: PublicKey?

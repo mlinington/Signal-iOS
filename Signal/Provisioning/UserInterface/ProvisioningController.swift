@@ -415,7 +415,7 @@ public class ProvisioningController: NSObject {
 
         // We don't use URLComponents to generate this URL as it encodes '+' and '/'
         // in the base64 pub_key in a way the Android doesn't tolerate.
-        let urlString = "\(UrlOpener.Constants.sgnlPrefix)://\(DeviceProvisioningURL.Constants.linkDeviceHost)?uuid=\(deviceId)&pub_key=\(encodedPubKey)"
+        let urlString = "\(DeviceProvisioningURL.Constants.localLinkScheme)://\(DeviceProvisioningURL.Constants.linkDeviceHost)?uuid=\(deviceId)&pub_key=\(encodedPubKey)"
         guard let url = URL(string: urlString) else {
             throw OWSAssertionError("invalid url: \(urlString)")
         }

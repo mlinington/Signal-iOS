@@ -50,7 +50,7 @@ class UsernameSelectionViewController: OWSViewController, OWSNavigationChildCont
         /// A well-known URL associated with a "learn more" string in the
         /// explanation footer. Can be any value - we will intercept this
         /// locally rather than actually open it.
-        static let learnMoreLink: URL = URL(string: "sgnl://username-selection-learn-more")!
+        static let learnMoreLink: URL = URL(string: "local.username-selection-learn-more")!
     }
 
     private enum UsernameSelectionState: Equatable, CustomStringConvertible {

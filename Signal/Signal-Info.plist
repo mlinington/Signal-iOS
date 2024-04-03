@@ -30,19 +30,6 @@
 	<string>7.5.0</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLName</key>
-			<string>$(SIGNAL_BUNDLEID_PREFIX).signal</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>sgnl</string>
-			</array>
-		</dict>
-	</array>
 	<key>CFBundleVersion</key>
 	<string>6</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

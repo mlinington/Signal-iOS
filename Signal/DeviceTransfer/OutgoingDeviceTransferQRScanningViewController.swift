@@ -168,7 +168,7 @@ extension OutgoingDeviceTransferQRScanningViewController: QRCodeScanDelegate {
         }
 
         // Ignore if a non-signal url was scanned
-        guard scannedURL.scheme == UrlOpener.Constants.sgnlPrefix else {
+        guard scannedURL.scheme == DeviceTransferService.Constants.localTransferScheme else {
             // TODO: The user has probably scanned the wrong QR code.
             // We could show an error alert to help them resolve the issue.
             // For now, ignore the QR code and continue scanning.

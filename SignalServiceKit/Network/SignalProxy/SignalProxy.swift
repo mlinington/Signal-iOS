@@ -74,11 +74,7 @@ public class SignalProxy: NSObject {
         guard let scheme = url.scheme else {
             return false
         }
-        let isValidScheme = (
-            scheme.caseInsensitiveCompare("https") == .orderedSame ||
-            scheme.caseInsensitiveCompare("sgnl") == .orderedSame
-        )
-        guard isValidScheme else {
+        guard scheme.caseInsensitiveCompare("https") == .orderedSame else {
             return false
         }
 
